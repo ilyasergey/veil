@@ -39,7 +39,14 @@ abbrev Set (α : Type) [Ord α] := Std.ExtTreeSet α compare
 /-- `T -> U`. -/
 abbrev Map (α β : Type) [Ord α] := Std.ExtTreeMap α β compare
 
-/-! ## Tuples of arity three to five. Pairs are `Prod`. -/
+end Quint
+
+/-! ## Tuples of arity three to five. Pairs are `Prod`.
+
+`@[veil_decl]` derives their instances as scoped instances of `Quint.Tuple`; the frontend opens it
+with `open scoped Quint.Tuple`. -/
+
+namespace Quint.Tuple
 
 @[veil_decl] structure Tup3 (α β γ : Type) where
   _1 : α
@@ -66,7 +73,7 @@ instance [Repr α] [Repr β] [Repr γ] [Repr δ] : Repr (Tup4 α β γ δ) where
 instance [Repr α] [Repr β] [Repr γ] [Repr δ] [Repr ε] : Repr (Tup5 α β γ δ ε) where
   reprPrec t _ := s!"({repr t._1}, {repr t._2}, {repr t._3}, {repr t._4}, {repr t._5})"
 
-end Quint
+end Quint.Tuple
 
 /-- `t._1` on a pair. -/
 @[reducible] def Prod._1 (p : α × β) : α := p.1
@@ -142,11 +149,12 @@ def range (a b : Int) : Quint.Set Int :=
 def tuples2 [Ord β] [TransOrd β] (s : Quint.Set α) (t : Quint.Set β) : Quint.Set (α × β) :=
   ExtTreeSet.ofList (s.toList.flatMap fun a => t.toList.map fun b => (a, b)) compare
 
+open scoped Quint.Tuple in
 /-- `tuples(S, T, U)` -/
 def tuples3 [Ord β] [TransOrd β] [Ord γ] [TransOrd γ] (s : Quint.Set α) (t : Quint.Set β)
-    (u : Quint.Set γ) : Quint.Set (Tup3 α β γ) :=
+    (u : Quint.Set γ) : Quint.Set (Quint.Tuple.Tup3 α β γ) :=
   ExtTreeSet.ofList (s.toList.flatMap fun a => t.toList.flatMap fun b =>
-    u.toList.map fun c => ⟨a, b, c⟩) compare
+    u.toList.map fun c => Quint.Tuple.Tup3.mk a b c) compare
 
 /-- All lists of length exactly `n` over `l`. -/
 def listsOfLength (l : List α) : Nat → List (List α)
