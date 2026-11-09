@@ -29,4 +29,36 @@ open Lean.PrettyPrinter in
 @[combinator_parenthesizer checkNoLinebreakBefore]
 def checkNoLinebreakBefore.parenthesizer (_errorMsg : String := "") : Parenthesizer := pure ()
 
+/-- Quint's own keywords, which are never identifiers. -/
+def quintKeywords : List String :=
+  ["if", "else", "match", "and", "or", "iff", "implies", "leadsTo", "import", "export", "module",
+   "def", "val", "var", "const", "pure", "action", "run", "temporal", "nondet", "type", "assume",
+   "all", "any", "from", "as"]
+
+/-- An identifier that Lean (or Veil, or another package) has made a keyword, such as `from`,
+`trusted` or `assert`. Quint code uses these as ordinary names. -/
+def quintKwIdentFn : ParserFn := fun c s =>
+  let startPos := s.pos
+  let s := tokenFn ["identifier"] c s
+  if s.hasError then s else
+  match s.stxStack.back with
+  | .atom info val =>
+    if val.length > 0 && val.front.isAlpha && val.all (fun ch => ch.isAlphanum || ch == '_')
+        && !quintKeywords.contains val then
+      s.popSyntax.pushSyntax (Syntax.ident info val.toRawSubstring (Name.mkSimple val) [])
+    else s.mkErrorAt "identifier" startPos
+  | _ => s.mkErrorAt "identifier" startPos
+
+def quintKwIdent : Parser where
+  info := { firstTokens := .unknown }
+  fn := quintKwIdentFn
+
+open Lean.PrettyPrinter in
+@[combinator_formatter quintKwIdent]
+def quintKwIdent.formatter : Formatter := Formatter.identNoAntiquot.formatter
+
+open Lean.PrettyPrinter in
+@[combinator_parenthesizer quintKwIdent]
+def quintKwIdent.parenthesizer : Parenthesizer := Parenthesizer.identNoAntiquot.parenthesizer
+
 end Veil.Quint

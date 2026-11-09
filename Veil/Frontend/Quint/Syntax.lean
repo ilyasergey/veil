@@ -7,15 +7,14 @@ public meta import Veil.Frontend.Quint.ParserUtil
 # Quint surface syntax
 
 A Lean grammar for [Quint](https://github.com/informalsystems/quint) modules, following Quint's
-ANTLR grammar (`quint/src/generated/Quint.g4`). A Quint module parses as written, with three
+ANTLR grammar (`quint/src/generated/Quint.g4`). A Quint module parses as written, with two
 lexical exceptions that Lean's tokenizer imposes:
 
 1. comments: `//` and `/* */` must be written `--` and `/- -/` (same length, so positions agree);
 2. a method called on a numeral needs parentheses: `(0).to(10)` instead of `0.to(10)`;
-3. identifiers that are Lean keywords (e.g. `from`, `at`, `fun`) need `«»` quotes when they stand
-   alone; as a method name after a dot (`x.then(y)`) they need no quotes.
 
 The `quint-to-veil` skill and `scripts/quint2veil.py` apply these rewrites mechanically.
+Identifiers that are Lean or Veil keywords (`from`, `end`, `trusted`, ...) parse as identifiers.
 
 Importing this module makes `and`, `or`, `iff`, `implies` and `leadsTo` keywords, as in Quint.
 -/
@@ -29,8 +28,13 @@ declare_syntax_cat quint_expr (behavior := both)
 declare_syntax_cat quint_type (behavior := both)
 declare_syntax_cat quint_decl (behavior := both)
 
+declare_syntax_cat quint_ident (behavior := both)
+syntax ident : quint_ident
+/-- A keyword of Lean or Veil used as a Quint identifier (e.g. `from`, `trusted`). -/
+@[quint_ident_parser] def quintKwIdentP := leading_parser quintKwIdent
+
 /-- A qualified identifier `A::B::c`. -/
-syntax quintQualId := ident (noWs "::" noWs ident)*
+syntax quintQualId := quint_ident (noWs "::" noWs quint_ident)*
 
 /-! ## Types -/
 
@@ -39,7 +43,7 @@ syntax:max quintQualId noWs "[" quint_type,+ "]" : quint_type
 syntax:max "(" ")" : quint_type
 syntax:max "(" quint_type ")" : quint_type
 syntax:max "(" quint_type "," quint_type,+,? ")" : quint_type
-syntax quintRowField := ident ":" quint_type
+syntax quintRowField := quint_ident ":" quint_type
 syntax:max "{" quintRowField,*,? "}" : quint_type
 syntax:20 quint_type:21 " -> " quint_type:20 : quint_type
 syntax:20 quint_type:21 " => " quint_type:20 : quint_type
@@ -48,14 +52,14 @@ syntax:20 atomic("(" quint_type,* ")" " => ") quint_type:20 : quint_type
 /-! ## Expressions -/
 
 /-- A lambda parameter: a name or `_`. -/
-syntax quintParam := ident <|> hole
+syntax quintParam := hole <|> quint_ident
 /-- A definition parameter, possibly with a type annotation. -/
 syntax quintAnnotParam := quintParam (":" quint_type)?
 
-syntax quintRecElem := (ident ":" quint_expr) <|> ("..." quint_expr)
+syntax quintRecElem := ("..." quint_expr) <|> (quint_ident ":" quint_expr)
 
 /-- A variant pattern in a `match`. -/
-syntax quintMatchPat := hole <|> (ident (noWs "(" quintParam ")")?)
+syntax quintMatchPat := hole <|> (quint_ident (noWs "(" quintParam ")")?)
 syntax quintMatchCase := quintMatchPat " => " quint_expr
 
 syntax quintQualifier :=
@@ -67,7 +71,7 @@ syntax quintOperDef :=
   quintQualifier quintQualId ("(" quintAnnotParam,*,? ")")? (":" quint_type)? (" = " quint_expr)? (";")?
 
 /-- A destructuring `val (a, b) = e` or `val { f, g } = e`. -/
-syntax quintValTuple := (&"pure")? &"val" (("(" quintParam,+ ")") <|> ("{" ident,+ "}")) " = " quint_expr (";")?
+syntax quintValTuple := (&"pure")? &"val" (("(" quintParam,+ ")") <|> ("{" quint_ident,+ "}")) " = " quint_expr (";")?
 
 syntax:max num : quint_expr
 syntax:max str : quint_expr
@@ -126,10 +130,10 @@ syntax:15 quint_expr:16 " -> " quint_expr:15 : quint_expr
 
 /-! ## Declarations -/
 
-syntax quintTypeHead := quintQualId (noWs "[" ident,+ "]")?
-syntax quintVariant := ident (noWs "(" quint_type ")")?
+syntax quintTypeHead := quintQualId (noWs "[" quint_ident,+ "]")?
+syntax quintVariant := quint_ident (noWs "(" quint_type ")")?
 syntax quintSumDef := ("|")? quintVariant ("|" quintVariant)*
-syntax quintImportArg := ident " = " quint_expr
+syntax quintImportArg := quint_ident " = " quint_expr
 syntax quintFrom := &"from" str
 /-- `M.*`, `M.name` (the parser reads `M.name` as one dotted identifier), or `M`. -/
 syntax quintImportTarget := atomic(quintQualId noWs "." noWs "*") <|> quintQualId

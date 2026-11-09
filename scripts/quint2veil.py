@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Mechanical rewrite of a Quint source (.qnt) into text that the Veil Quint frontend parses.
 
-Lean's tokenizer differs from Quint's in three places; this script rewrites exactly those:
+Lean's tokenizer differs from Quint's in two places; this script rewrites exactly those:
 
 1. comments: `//` -> `--`, `/*` -> `/-`, `*/` -> `-/` (same length, so line/column positions
    agree with the original file);
 2. a method called on a numeral: `0.to(10)` -> `(0).to(10)`;
-3. identifiers that are Lean keywords used as names: `from` -> `«from»` (only where they stand
-   alone, not after a dot).
 
 Usage:
     quint2veil.py FILE.qnt              # print the converted module text
@@ -62,22 +60,7 @@ def convert(src: str) -> str:
     text = ''.join(out)
     # 2. methods on numerals: 0.to(10) -> (0).to(10); skip decimals like 1.5 (not Quint anyway)
     text = re.sub(r'(?<![\w.])(\d[\d_]*|0x[0-9a-fA-F_]+)\.([A-Za-z_])', r'(\1).\2', text)
-    # 3. standalone Lean keywords used as identifiers (not after '.', not in comments/strings)
-    def fix_line(line: str) -> str:
-        code, sep, comment = line.partition('--')
-        parts = re.split(r'("(?:[^"\\]|\\.)*")', code)
-        for k in range(0, len(parts), 2):
-            def repl(m):
-                w = m.group(2)
-                if m.group(1) == '.' or w in QUINT_KEYWORDS and w != 'from':
-                    return m.group(0)
-                rest = parts[k][m.end():]
-                if w == 'from' and (re.match(r'\s*"', rest) or (rest.strip() == '' and k + 1 < len(parts))):
-                    return m.group(0)  # `import M.* from "./file"`
-                return m.group(1) + '«' + w + '»' if w in LEAN_KEYWORDS else m.group(0)
-            parts[k] = re.sub(r'(\.?)\b([A-Za-z_][A-Za-z0-9_]*)\b', repl, parts[k])
-        return ''.join(parts) + sep + comment
-    return '\n'.join(fix_line(l) for l in text.split('\n'))
+    return text
 
 
 def main():

@@ -43,35 +43,89 @@ end Quint
 
 /-! ## Tuples of arity three to five. Pairs are `Prod`.
 
-`@[veil_decl]` derives their instances as scoped instances of `Quint.Tuple`; the frontend opens it
-with `open scoped Quint.Tuple`. -/
+Their order is the lexicographic order of the corresponding nested pairs. -/
 
 namespace Quint.Tuple
-
-@[veil_decl] structure Tup3 (α β γ : Type) where
+structure Tup3 (α β γ : Type) where
   _1 : α
   _2 : β
   _3 : γ
+deriving Inhabited, DecidableEq, Hashable, Lean.ToJson
 
-@[veil_decl] structure Tup4 (α β γ δ : Type) where
+@[reducible] def Tup3.toProd {α β γ : Type} (t : Tup3 α β γ) : α × β × γ := (t._1, t._2, t._3)
+
+attribute [local instance] lexOrd in
+instance {α β γ : Type} [Ord α] [Ord β] [Ord γ] : Ord (Tup3 α β γ) := ⟨compareOn Tup3.toProd⟩
+
+attribute [local instance] lexOrd in
+instance {α β γ : Type} [Ord α] [Ord β] [Ord γ] [Std.TransOrd α] [Std.TransOrd β] [Std.TransOrd γ] : Std.TransOrd (Tup3 α β γ) :=
+  inferInstanceAs (Std.TransCmp (compareOn Tup3.toProd))
+
+attribute [local instance] lexOrd in
+instance {α β γ : Type} [Ord α] [Ord β] [Ord γ] [Std.LawfulEqOrd α] [Std.LawfulEqOrd β] [Std.LawfulEqOrd γ] : Std.LawfulEqOrd (Tup3 α β γ) where
+  compare_self := by intro x; exact Std.ReflCmp.compare_self (cmp := compare) (a := x.toProd)
+  eq_of_compare := by
+    intro x y h
+    have h' : x.toProd = y.toProd := Std.LawfulEqCmp.eq_of_compare (cmp := compare) h
+    cases x; cases y; simp_all
+
+instance {α β γ : Type} [Repr α] [Repr β] [Repr γ] : Repr (Tup3 α β γ) where
+  reprPrec t _ := "(" ++ repr t._1 ++ ", " ++ repr t._2 ++ ", " ++ repr t._3 ++ ")"
+
+structure Tup4 (α β γ δ : Type) where
   _1 : α
   _2 : β
   _3 : γ
   _4 : δ
+deriving Inhabited, DecidableEq, Hashable, Lean.ToJson
 
-@[veil_decl] structure Tup5 (α β γ δ ε : Type) where
+@[reducible] def Tup4.toProd {α β γ δ : Type} (t : Tup4 α β γ δ) : α × β × γ × δ := (t._1, t._2, t._3, t._4)
+
+attribute [local instance] lexOrd in
+instance {α β γ δ : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] : Ord (Tup4 α β γ δ) := ⟨compareOn Tup4.toProd⟩
+
+attribute [local instance] lexOrd in
+instance {α β γ δ : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] [Std.TransOrd α] [Std.TransOrd β] [Std.TransOrd γ] [Std.TransOrd δ] : Std.TransOrd (Tup4 α β γ δ) :=
+  inferInstanceAs (Std.TransCmp (compareOn Tup4.toProd))
+
+attribute [local instance] lexOrd in
+instance {α β γ δ : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] [Std.LawfulEqOrd α] [Std.LawfulEqOrd β] [Std.LawfulEqOrd γ] [Std.LawfulEqOrd δ] : Std.LawfulEqOrd (Tup4 α β γ δ) where
+  compare_self := by intro x; exact Std.ReflCmp.compare_self (cmp := compare) (a := x.toProd)
+  eq_of_compare := by
+    intro x y h
+    have h' : x.toProd = y.toProd := Std.LawfulEqCmp.eq_of_compare (cmp := compare) h
+    cases x; cases y; simp_all
+
+instance {α β γ δ : Type} [Repr α] [Repr β] [Repr γ] [Repr δ] : Repr (Tup4 α β γ δ) where
+  reprPrec t _ := "(" ++ repr t._1 ++ ", " ++ repr t._2 ++ ", " ++ repr t._3 ++ ", " ++ repr t._4 ++ ")"
+
+structure Tup5 (α β γ δ ε : Type) where
   _1 : α
   _2 : β
   _3 : γ
   _4 : δ
   _5 : ε
+deriving Inhabited, DecidableEq, Hashable, Lean.ToJson
 
-instance [Repr α] [Repr β] [Repr γ] : Repr (Tup3 α β γ) where
-  reprPrec t _ := s!"({repr t._1}, {repr t._2}, {repr t._3})"
-instance [Repr α] [Repr β] [Repr γ] [Repr δ] : Repr (Tup4 α β γ δ) where
-  reprPrec t _ := s!"({repr t._1}, {repr t._2}, {repr t._3}, {repr t._4})"
-instance [Repr α] [Repr β] [Repr γ] [Repr δ] [Repr ε] : Repr (Tup5 α β γ δ ε) where
-  reprPrec t _ := s!"({repr t._1}, {repr t._2}, {repr t._3}, {repr t._4}, {repr t._5})"
+@[reducible] def Tup5.toProd {α β γ δ ε : Type} (t : Tup5 α β γ δ ε) : α × β × γ × δ × ε := (t._1, t._2, t._3, t._4, t._5)
+
+attribute [local instance] lexOrd in
+instance {α β γ δ ε : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] [Ord ε] : Ord (Tup5 α β γ δ ε) := ⟨compareOn Tup5.toProd⟩
+
+attribute [local instance] lexOrd in
+instance {α β γ δ ε : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] [Ord ε] [Std.TransOrd α] [Std.TransOrd β] [Std.TransOrd γ] [Std.TransOrd δ] [Std.TransOrd ε] : Std.TransOrd (Tup5 α β γ δ ε) :=
+  inferInstanceAs (Std.TransCmp (compareOn Tup5.toProd))
+
+attribute [local instance] lexOrd in
+instance {α β γ δ ε : Type} [Ord α] [Ord β] [Ord γ] [Ord δ] [Ord ε] [Std.LawfulEqOrd α] [Std.LawfulEqOrd β] [Std.LawfulEqOrd γ] [Std.LawfulEqOrd δ] [Std.LawfulEqOrd ε] : Std.LawfulEqOrd (Tup5 α β γ δ ε) where
+  compare_self := by intro x; exact Std.ReflCmp.compare_self (cmp := compare) (a := x.toProd)
+  eq_of_compare := by
+    intro x y h
+    have h' : x.toProd = y.toProd := Std.LawfulEqCmp.eq_of_compare (cmp := compare) h
+    cases x; cases y; simp_all
+
+instance {α β γ δ ε : Type} [Repr α] [Repr β] [Repr γ] [Repr δ] [Repr ε] : Repr (Tup5 α β γ δ ε) where
+  reprPrec t _ := "(" ++ repr t._1 ++ ", " ++ repr t._2 ++ ", " ++ repr t._3 ++ ", " ++ repr t._4 ++ ", " ++ repr t._5 ++ ")"
 
 end Quint.Tuple
 
@@ -149,7 +203,6 @@ def range (a b : Int) : Quint.Set Int :=
 def tuples2 [Ord β] [TransOrd β] (s : Quint.Set α) (t : Quint.Set β) : Quint.Set (α × β) :=
   ExtTreeSet.ofList (s.toList.flatMap fun a => t.toList.map fun b => (a, b)) compare
 
-open scoped Quint.Tuple in
 /-- `tuples(S, T, U)` -/
 def tuples3 [Ord β] [TransOrd β] [Ord γ] [TransOrd γ] (s : Quint.Set α) (t : Quint.Set β)
     (u : Quint.Set γ) : Quint.Set (Quint.Tuple.Tup3 α β γ) :=

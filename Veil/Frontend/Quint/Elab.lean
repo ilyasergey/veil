@@ -95,9 +95,17 @@ def typeLeanStr (s : String) : String :=
 
 /-- The parts of a `quintQualId`: `A::b.c.d` gives `(["A", "b"], ["c", "d"])`, a qualified
 name and the field/method names that follow it. -/
+partial def identLeaves (stx : Syntax) : List Syntax :=
+  if stx.isIdent then [stx] else stx.getArgs.toList.flatMap identLeaves
+
+/-- The name of a `quint_ident` (or any node with one identifier). -/
+def identStr (stx : Syntax) : String :=
+  match identLeaves stx with
+  | i :: _ => i.getId.toString (escape := false)
+  | [] => "_"
+
 def qualIdParts (stx : Syntax) : String × List String :=
-  let ids := stx.getArgs.toList.flatMap fun a =>
-    if a.isIdent then [a] else a.getArgs.toList.flatMap fun g => g.getArgs.toList.filter (·.isIdent)
+  let ids := identLeaves stx
   match ids.reverse with
   | [] => ("", [])
   | last :: revInit =>
@@ -232,9 +240,20 @@ partial def unwrap (stx : Syntax) : Syntax :=
 
 def isQualId (stx : Syntax) : Bool := stx.isOfKind ``quintQualId
 
-/-- The qualified-identifier node of `quint_expr`, if `stx` is one. -/
+/-- The string literal inside an expression, if it is one. -/
+partial def strLitOf? (stx : Syntax) : Option String :=
+  match stx.isStrLit? with
+  | some v => some v
+  | none => if stx.getNumArgs == 1 then strLitOf? stx[0] else
+      match stx with
+      | `(quint_expr| ($e)) => strLitOf? e
+      | _ => none
+
+/-- The qualified-identifier node of `quint_expr`, if `stx` is one. The keyword `assert` is
+returned as the identifier `assert`. -/
 def asQualId? (stx : Syntax) : Option Syntax :=
-  if stx.getNumArgs == 1 && stx[0].isOfKind ``quintQualId then some stx[0] else none
+  if stx.getNumArgs == 1 && stx[0].isOfKind ``quintQualId then some stx[0]
+  else none
 
 /-- The kind name given to `syntax` declarations in `Syntax.lean` has no stable name; we match
 with quotations and use these helpers for the hand-written parsers. -/
@@ -287,7 +306,7 @@ partial def trType (stx : Syntax) : TrM Term := do
     | _ => throwErrorAt stx "tuples with more than five components are not supported"
   | `(quint_type| { $fs,* }) =>
     let fs := fs.getElems
-    let pairs := fs.map fun f => (f.raw[0].getId.toString (escape := false), f.raw[2])
+    let pairs := fs.map fun f => (identStr f.raw[0], f.raw[2])
     let sorted := pairs.qsort (fun a b => a.1 < b.1)
     let name ← liftM (m := CommandElabM) <| ensureRecord (sorted.map (·.1))
     let tys ← sorted.mapM (trType ·.2)
@@ -322,11 +341,16 @@ def nullaryMethods : List String :=
 /-- `Int`, `Nat`, `Bool` used as sets. -/
 inductive InfSet where | int | nat | bool
 
-def infSet? (stx : Syntax) : Option InfSet :=
+partial def infSetIn? (mod : ModInfo) (stx : Syntax) (fuel : Nat := 8) : Option InfSet :=
   match asQualId? (unwrap stx) with
   | some q => match (qualIdParts q) with
     | ("Int", []) => some .int
     | ("Nat", []) => some .nat
+    | (n, []) =>
+      -- an alias such as `pure val Ballot = Nat`
+      match mod.defs[n]? with
+      | some d => if fuel > 0 && (d.params.getD #[]).isEmpty then infSetIn? mod d.body (fuel - 1) else none
+      | none => none
     | _ => none
   | none => none
 
@@ -339,7 +363,7 @@ def lambda? (stx : Syntax) : Option (Array Syntax × Bool × Syntax) :=
   | _ => none
 
 def paramName (p : Syntax) : String :=
-  if p[0].isIdent then p[0].getId.toString (escape := false) else "_"
+  if (identLeaves p).isEmpty then "_" else identStr p
 
 mutual
 
@@ -372,7 +396,7 @@ partial def trExpr (stx : Syntax) : TrM Term := withRef stx do
     let c' ← trExpr c
     let a' ← trExpr a
     let b' ← trExpr b
-    `(if $c' then $a' else $b')
+    `(if ($c' : Prop) then $a' else $b')
   | `(quint_expr| match $e { $[|]? $c:quintMatchCase $[| $cs:quintMatchCase]* }) =>
     trMatch e (#[c] ++ cs)
   | `(quint_expr| $_p:quintParam => $_b) => trLambda stx
@@ -427,13 +451,11 @@ partial def trRecord (stx : Syntax) (elems : Array Syntax) : TrM Term := do
   let mut spread : Option Syntax := none
   let mut fields : Array (String × Syntax) := #[]
   for e in elems do
-    if e[0].getKind == `token.«...» || (e.getNumArgs == 2 && e[0].isAtom) then
-      spread := some e[1]
-    else if e.getNumArgs == 1 && e[0].getNumArgs == 2 && e[0][0].isAtom then
-      spread := some e[0][1]
+    let e' := if e.getNumArgs == 1 then e[0] else e
+    if e'[0].isAtom && e'[0].getAtomVal == "..." then
+      spread := some e'[1]
     else
-      let e' := if e.getNumArgs == 1 then e[0] else e
-      fields := fields.push (e'[0].getId.toString (escape := false), e'[2])
+      fields := fields.push (identStr e'[0], e'[2])
   if let some r := spread then
     let mut acc ← trExpr r
     for (f, v) in fields do
@@ -476,8 +498,11 @@ partial def trBaseName (ref : Syntax) (n : String) : TrM Term := do
     match ctx.mod.defRepr[n]?.getD .inline with
     | .named id => return id
     | .inline =>
-      if dd.params.any (·.size > 0) then
-        throwErrorAt ref "operator `{n}` must be applied to arguments"
+      let ps := dd.params.getD #[]
+      if ps.size > 0 then
+        -- an operator used as a value: `fun p_1 ... p_n => body`
+        return ← withReader (fun c => { c with locals := {} })
+          (trLambdaNames (ps.map (·.name)).toList [] dd.body)
       return ← withReader (fun c => { c with locals := {} }) (trExpr dd.body)
   if let some info := ctx.mod.ctors[n]? then
     return mkIdent info.ctorName
@@ -587,7 +612,7 @@ where
 /-- `S.forall(x => P)` and `S.exists(x => P)` as bounded quantifiers. -/
 partial def trQuant (isForall : Bool) (setStx : Syntax) (f : Syntax) : TrM Term := do
   let mkQ (x : Ident) (body : Term) : TrM Term := do
-    match infSet? setStx with
+    match infSetIn? (← read).mod setStx with
     | some .int => if isForall then `(∀ $x:ident : Int, $body) else `(∃ $x:ident : Int, $body)
     | some .nat =>
       if isForall then `(∀ $x:ident : Int, $x ≥ 0 → $body) else `(∃ $x:ident : Int, $x ≥ 0 ∧ $body)
@@ -639,17 +664,25 @@ partial def trMatch (e : Syntax) (cases : Array Syntax) : TrM Term := do
   let alts ← cases.mapM fun c => do
     let pat := c[0]
     let rhs := c[2]
-    if pat[0].getKind == `Lean.Parser.Term.hole || (pat.getNumArgs == 1 && pat[0].isAtom) then
+    -- `_`, `L`, or `L(x)`
+    let (lbl?, arg?) : Option String × Option Syntax :=
+      match identLeaves pat with
+      | [] => (none, none)
+      | l :: _ =>
+        let inner := if pat.getNumArgs == 1 then pat[0] else pat
+        let argOpt := if inner.getNumArgs ≥ 2 then inner[1] else Syntax.missing
+        (some (l.getId.toString (escape := false)),
+         if argOpt.getNumArgs ≥ 3 then some argOpt[1] else none)
+    match lbl? with
+    | none =>
       let r ← trExpr rhs
       `(Lean.Parser.Term.matchAltExpr| | _ => $r)
-    else
-      let lbl := pat[0].getId.toString (escape := false)
+    | some lbl =>
       let some info := (← read).mod.ctors[lbl]?
         | throwErrorAt pat "unknown variant `{lbl}`"
       let cid := mkIdent info.ctorName
-      let argOpt := pat[1]
-      if argOpt.getNumArgs > 0 then
-        let p := argOpt[1]
+      match arg? with
+      | some p =>
         let pn := paramName p
         if pn == "_" then
           let r ← trExpr rhs
@@ -659,7 +692,7 @@ partial def trMatch (e : Syntax) (cases : Array Syntax) : TrM Term := do
           bindLocal pn fun x => do
             let r ← trExpr rhs
             `(Lean.Parser.Term.matchAltExpr| | $cid:ident $x:ident => $r)
-      else
+      | none =>
         let r ← trExpr rhs
         if info.hasArg then `(Lean.Parser.Term.matchAltExpr| | $cid:ident _ => $r)
         else `(Lean.Parser.Term.matchAltExpr| | $cid:ident => $r)
@@ -701,7 +734,7 @@ partial def trValTuple (dStx : Syntax) (body : Syntax) : TrM Term := do
           `(($x).$fid:ident)
     bindProjs x rhsT names projs body
   else
-    let names := (sepArgs patStx[1]).map (·.getId.toString (escape := false))
+    let names := (sepArgs patStx[1]).map identStr
     let projs ← names.mapM fun f => do
       let fid := mkIdent (Name.mkSimple f)
       `(($x).$fid:ident)
@@ -736,12 +769,12 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   -- sets
   | "Set", _ => do `(Quint.Set.ofList [$(← all),*])
   | "contains", 2 => do
-    match stxAt 0 >>= infSet? with
+    match (stxAt 0).bind (infSetIn? (← read).mod) with
     | some .int => `(True)
     | some .nat => `($(← arg 1) ≥ 0)
     | _ => `($(← arg 1) ∈ $(← arg 0))
   | "in", 2 => do
-    match stxAt 1 >>= infSet? with
+    match (stxAt 1).bind (infSetIn? (← read).mod) with
     | some .int => `(True)
     | some .nat => `($(← arg 0) ≥ 0)
     | _ => `($(← arg 0) ∈ $(← arg 1))
@@ -831,12 +864,12 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   -- records and tuples
   | "with", 3 => do
     let some fs := stxAt 1 | throwError "`with` expects a field name"
-    let f := (unwrap fs).isLit? strLitKind |>.getD ""
+    let f := (strLitOf? fs).getD ""
     let fid := mkIdent (Name.mkSimple f)
     `({ $(← arg 0) with $fid:ident := $(← arg 2) })
   | "field", 2 => do
     let some fs := stxAt 1 | throwError "`field` expects a field name"
-    let f := (unwrap fs).isLit? strLitKind |>.getD ""
+    let f := (strLitOf? fs).getD ""
     let fid := mkIdent (Name.mkSimple f)
     `(($(← arg 0)).$fid:ident)
   | "Tup", _ => do
@@ -1026,6 +1059,63 @@ partial def trAction (stx : Syntax) : TrM DoItems := withRef stx do
     match ctx.mod.defs[n]? with
     | some dd => inlineAction dd #[]
     | none => throwErrorAt stx "unknown action `{n}`"
+  | `(quint_expr| $dd:quintValTuple $body) =>
+    -- `val (a, b) = e` or `val { f, g } = e` before an action
+    let patStx := dd.raw[2]
+    let rhsT ← trExpr dd.raw[4]
+    let x ← freshName "v"
+    let names : Array String := if patStx[0].getAtomVal == "(" then (sepArgs patStx[1]).map paramName
+      else (sepArgs patStx[1]).map identStr
+    let isTuple := patStx[0].getAtomVal == "("
+    let rec go (i : Nat) : TrM DoItems := do
+      if h : i < names.size then
+        let proj : Term ← if !isTuple then
+            `(($x).$(mkIdent (Name.mkSimple names[i])):ident)
+          else if names.size == 2 then (if i == 0 then `(($x).1) else `(($x).2))
+          else `(($x).$(mkIdent (Name.mkSimple s!"_{i+1}")):ident)
+        bindLocal names[i] fun id => do
+          let rest ← go (i + 1)
+          return #[← doItem (← `(doElem| let $id:ident := $proj))] ++ rest
+      else trAction body
+    return #[← doItem (← `(doElem| let $x:ident := $rhsT))] ++ (← go 0)
+  | `(quint_expr| match $e { $[|]? $c:quintMatchCase $[| $cs:quintMatchCase]* }) =>
+    -- compiled to `if T.isC e then (let x := T.getC e; ...) else ...`, which Veil's
+    -- weakest-precondition machinery handles better than `match`
+    let dTerm ← trExpr e
+    let dId ← freshName "m"
+    let rec goCases (cs : List Syntax) : TrM DoItems := do
+      match cs with
+      | [] => return #[← doItem (← `(doElem| assume False))]
+      | c :: rest =>
+        let pat := c[0]
+        let rhs := c[2]
+        let (lbl?, arg?) : Option String × Option Syntax :=
+          match identLeaves pat with
+          | [] => (none, none)
+          | l :: _ =>
+            let inner := if pat.getNumArgs == 1 then pat[0] else pat
+            let argOpt := if inner.getNumArgs ≥ 2 then inner[1] else Syntax.missing
+            (some (l.getId.toString (escape := false)),
+             if argOpt.getNumArgs ≥ 3 then some argOpt[1] else none)
+        match lbl? with
+        | none => trAction rhs
+        | some lbl =>
+          let some info := (← read).mod.ctors[lbl]?
+            | throwErrorAt pat "unknown variant `{lbl}`"
+          let isId := mkIdent (info.typeName ++ Name.mkSimple ("is" ++ lbl))
+          let getId := mkIdent (info.typeName ++ Name.mkSimple ("get" ++ lbl))
+          let thenItems ← match arg? with
+            | some p =>
+              if paramName p == "_" then trAction rhs
+              else bindLocal (paramName p) fun x => do
+                return #[← doItem (← `(doElem| let $x:ident := $getId $dId))] ++ (← trAction rhs)
+            | none => trAction rhs
+          let elseItems ← goCases rest
+          let t ← mkDoSeq thenItems
+          let f ← mkDoSeq elseItems
+          return #[← doItem (← `(doElem| if $isId $dId = true then $t else $f))]
+    return #[← doItem (← `(doElem| let $dId:ident := $dTerm))] ++
+      (← goCases ((#[c] ++ cs).toList.map (·.raw)))
   | _ => throwErrorAt stx "unsupported action"
 
 /-- `nondet x = S.oneOf()`, followed by the items produced by `k`. -/
@@ -1061,7 +1151,7 @@ partial def trNondet (qd : QDef) (k : TrM DoItems) : TrM DoItems := do
         for f in fs.dropLast do acc ← trField acc f q
         pure (acc, none)
     | s =>
-      match infSet? s with
+      match infSetIn? (← read).mod s with
       | some i => pure (← `(Int), some i)
       | none =>
         match asQualId? (unwrap s) with
