@@ -260,11 +260,18 @@ with quotations and use these helpers for the hand-written parsers. -/
 def isApp (stx : Syntax) : Bool := stx.isOfKind ``quintApp
 def isSub (stx : Syntax) : Bool := stx.isOfKind ``quintSub
 
-/-- `e.f` (a dot without a call): the receiver and the name. -/
-def dot? (stx : Syntax) : Option (Syntax × String) :=
+/-- `e.f` (a dot without a call): the receiver and the names after the dot (`e.f.g` reads
+`f.g` as one identifier). -/
+def dots? (stx : Syntax) : Option (Syntax × List String) :=
   if stx.getKind == `Veil.Quint.«quint_expr_.__» then
-    some (stx[0], stx[2].getId.toString (escape := false))
+    some (stx[0], stx[2].getId.components.map (·.toString (escape := false)))
   else none
+
+/-- `e.f`: the receiver and the last name, with any intermediate fields as a dotted receiver. -/
+def dot? (stx : Syntax) : Option (Syntax × String) :=
+  match dots? stx with
+  | some (e, fs) => some (e, fs.getLastD "")
+  | none => none
 
 /-! ## Types -/
 
@@ -368,8 +375,10 @@ def paramName (p : Syntax) : String :=
 mutual
 
 partial def trExpr (stx : Syntax) : TrM Term := withRef stx do
-  if let some (e, f) := dot? stx then
-    return ← trField (← trExpr e) f e
+  if let some (e, fs) := dots? stx then
+    let mut acc ← trExpr e
+    for f in fs do acc ← trField acc f e
+    return acc
   if isApp stx then
     return ← trApp stx[0] (sepArgs stx[2])
   if isSub stx then
@@ -514,8 +523,12 @@ partial def trBaseName (ref : Syntax) (n : String) : TrM Term := do
 /-- Translate the application `callee(args)`. -/
 partial def trApp (callee : Syntax) (args : Array Syntax) : TrM Term := do
   -- method call via dot on an arbitrary expression: `(e).f(args)`
-  if let some (e, f) := dot? callee then
-    return ← trCall f (#[e] ++ args)
+  if let some (e, fs) := dots? callee then
+    if fs.length ≤ 1 then
+      return ← trCall (fs.getLastD "") (#[e] ++ args)
+    let mut recv ← trExpr e
+    for f in fs.dropLast do recv ← trField recv f e
+    return ← trCallT (fs.getLastD "") recv args
   match asQualId? callee with
   | some q =>
     let (n, fields) := qualIdParts q
@@ -659,44 +672,50 @@ partial def trQuant (isForall : Bool) (setStx : Syntax) (f : Syntax) : TrM Term 
     let x ← freshName "x"
     mkQ x (← `($p $x))
 
+/-- `match e { | A(x) => e1 | B => e2 | _ => e3 }` as
+`if T.isA d then (let x := T.getA d; e1) else if T.isB d then e2 else e3`. Quint's variant
+eliminator becomes a chain of conditionals over the discriminators that the frontend declares for
+each sum type, which Veil's verification conditions and the SMT backend handle directly. -/
 partial def trMatch (e : Syntax) (cases : Array Syntax) : TrM Term := do
-  let dd ← trExpr e
-  let alts ← cases.mapM fun c => do
+  let dTerm ← trExpr e
+  let dId ← freshName "m"
+  let parsed := cases.map fun c =>
     let pat := c[0]
     let rhs := c[2]
-    -- `_`, `L`, or `L(x)`
-    let (lbl?, arg?) : Option String × Option Syntax :=
-      match identLeaves pat with
-      | [] => (none, none)
-      | l :: _ =>
-        let inner := if pat.getNumArgs == 1 then pat[0] else pat
-        let argOpt := if inner.getNumArgs ≥ 2 then inner[1] else Syntax.missing
-        (some (l.getId.toString (escape := false)),
-         if argOpt.getNumArgs ≥ 3 then some argOpt[1] else none)
-    match lbl? with
-    | none =>
-      let r ← trExpr rhs
-      `(Lean.Parser.Term.matchAltExpr| | _ => $r)
-    | some lbl =>
-      let some info := (← read).mod.ctors[lbl]?
-        | throwErrorAt pat "unknown variant `{lbl}`"
-      let cid := mkIdent info.ctorName
-      match arg? with
-      | some p =>
-        let pn := paramName p
-        if pn == "_" then
-          let r ← trExpr rhs
-          if info.hasArg then `(Lean.Parser.Term.matchAltExpr| | $cid:ident _ => $r)
-          else `(Lean.Parser.Term.matchAltExpr| | $cid:ident => $r)
-        else
-          bindLocal pn fun x => do
-            let r ← trExpr rhs
-            `(Lean.Parser.Term.matchAltExpr| | $cid:ident $x:ident => $r)
-      | none =>
-        let r ← trExpr rhs
-        if info.hasArg then `(Lean.Parser.Term.matchAltExpr| | $cid:ident _ => $r)
-        else `(Lean.Parser.Term.matchAltExpr| | $cid:ident => $r)
-  `(match $dd:term with $alts:matchAlt*)
+    match identLeaves pat with
+    | [] => (none, none, rhs)
+    | l :: _ =>
+      let inner := if pat.getNumArgs == 1 then pat[0] else pat
+      let argOpt := if inner.getNumArgs ≥ 2 then inner[1] else Syntax.missing
+      (some (l.getId.toString (escape := false)),
+       (if argOpt.getNumArgs ≥ 3 then some argOpt[1] else none), rhs)
+  let rec go (cs : List (Option String × Option Syntax × Syntax)) : TrM Term := do
+    match cs with
+    | [] => throwErrorAt e "a `match` needs at least one case"
+    | (lbl?, arg?, rhs) :: rest =>
+      let body ← match lbl? with
+        | none => trExpr rhs
+        | some lbl =>
+          let some info := (← read).mod.ctors[lbl]?
+            | throwErrorAt e "unknown variant `{lbl}`"
+          let getId := mkIdent (info.typeName ++ Name.mkSimple ("get" ++ lbl))
+          match arg? with
+          | some p =>
+            if paramName p == "_" then trExpr rhs
+            else bindLocal (paramName p) fun x => do
+              let b ← trExpr rhs
+              `(let $x:ident := $getId $dId; $b)
+          | none => trExpr rhs
+      match lbl?, rest with
+      | none, _ => return body
+      | some _, [] => return body
+      | some lbl, _ =>
+        let some info := (← read).mod.ctors[lbl]? | throwErrorAt e "unknown variant `{lbl}`"
+        let isId := mkIdent (info.typeName ++ Name.mkSimple ("is" ++ lbl))
+        let restT ← go rest
+        `(if $isId $dId = true then $body else $restT)
+  let r ← go parsed.toList
+  `(let $dId:ident := $dTerm; $r)
 
 /-- `val x = e  body`, `def f(x) = e  body`, `pure val ...` (not `nondet`). -/
 partial def trLetDef (dd : Syntax) (body : Syntax) : TrM Term := do
@@ -1168,7 +1187,9 @@ partial def trNondet (qd : QDef) (k : TrM DoItems) : TrM DoItems := do
                ← doItem (← `(doElem| assume $x ≥ 0))] ++ rest
     | none =>
       let sub ← freshName (qd.name ++ "_elem")
-      return #[← doItem (← `(doElem| let $sub:ident : { y // y ∈ $setT } :| True)),
+      let setId ← freshName (qd.name ++ "_set")
+      return #[← doItem (← `(doElem| let $setId:ident := $setT)),
+               ← doItem (← `(doElem| let $sub:ident : { y // y ∈ $setId } :| True)),
                ← doItem (← `(doElem| let $x:ident := ($sub).val))] ++ rest
 
 /-- Non-deterministic choice between actions. -/

@@ -58,6 +58,13 @@ def asPrefix? (stx : Syntax) : Option String :=
 partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandElabM (Array Item) := do
   if depth > 16 then throwError "imports nested too deeply"
   let mods := quintModuleExt.getState (← getEnv)
+  -- `export I.*` makes the names of `import ... as I` available without the prefix
+  let exported : Std.HashSet String := decls.foldl (fun acc dcl =>
+    if dcl.isOfKind ``quintExport then
+      let tgt := dcl[1][0]
+      let qual := if tgt.isOfKind ``quintQualId then tgt else tgt[0]
+      acc.insert (qualIdParts qual).1
+    else acc) {}
   let mut out : Array Item := #[]
   for dcl in decls do
     if dcl.isOfKind ``quintImport then
@@ -73,6 +80,7 @@ partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandEla
         match asPrefix? dcl[2] with
         | some p => some p
         | none => if !star && fields.isEmpty then some mname else none
+      let pfx? := pfx?.filter (!exported.contains ·)
       match pfx? with
       | some p =>
         let names := declNames (inner.map (·.decl))
@@ -87,7 +95,7 @@ partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandEla
       let mut subst : Std.HashMap String Syntax := {}
       for a in dcl[3].getSepArgs do
         subst := subst.insert (identStr a[0]) a[2]
-      match asPrefix? dcl[5] with
+      match (asPrefix? dcl[5]).filter (!exported.contains ·) with
       | some p =>
         let names := declNames (inner.map (·.decl))
         -- the substituted expressions refer to the importing module: do not rename them
@@ -155,6 +163,8 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
                       constOrder := c.constOrder.push n }
     else if dcl.isOfKind ``quintVar then
       let (n, _) := qualIdParts dcl[1]
+      -- a module imported along two paths declares its variables once
+      if c.mod.vars.contains n then continue
       c := { c with mod := { c.mod with vars := c.mod.vars.insert n dcl[3],
                                         varOrder := c.mod.varOrder.push n } }
     else if dcl.isOfKind ``quintAssume then
@@ -181,6 +191,7 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
                                         typeParams := c.mod.typeParams.insert n params } }
     else if dcl.isOfKind ``quintOper then
       let qd := parseOperDef dcl[0]
+      if c.mod.defs.contains qd.name then continue
       c := { c with mod := { c.mod with defs := c.mod.defs.insert qd.name qd },
                     defOrder := c.defOrder.push qd.name }
     else if dcl.isOfKind ``quintValDestr then
@@ -449,6 +460,12 @@ def elabCommandString (src : String) : CommandElabM Unit := do
 order (by projection to nested pairs, whose lawfulness Lean proves), and a Quint-style `Repr`.
 They are generated in the namespace `QuintRecords` and are public. -/
 def recordCommands (short : String) (fields : Array String) : Array String :=
+  if fields.isEmpty then
+    #[s!"public structure {short} where\nderiving Inhabited, DecidableEq, Hashable, Lean.ToJson, Repr",
+      s!"public instance : Ord {short} := ⟨fun _ _ => .eq⟩",
+      s!"public instance : Std.TransOrd {short} where\n  eq_swap := rfl\n  isLE_trans := fun _ _ => rfl",
+      s!"public instance : Std.LawfulEqOrd {short} where\n  compare_self := rfl\n  eq_of_compare := fun _ => rfl"]
+  else
   let n := fields.size
   let tvs := (List.range n).toArray.map fun i => s!"α{i}"
   let tvBinders := " ".intercalate (tvs.map fun t => s!"{t}").toList
@@ -590,10 +607,10 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       elabCommand (← `(command| assumption [$nid] $t))
     catch ex => logWarning m!"assumption `{n}` is skipped: {ex.toMessageData}"
   -- initial states and transitions
-  if let some initDef := mod.defs[initName]? then
+  if let some initDef := (mod.defs[initName]?).filter (·.params.all (·.isEmpty)) then
     let body ← runTr mod (trTopAction initDef.body)
     withRef initDef.ref <| elabCommand (← `(command| after_init { $body }))
-  if let some stepDef := mod.defs[stepName]? then
+  if let some stepDef := (mod.defs[stepName]?).filter (·.params.all (·.isEmpty)) then
     let branches := splitBranches mod stepDef.body
     let mut used : Std.HashMap String Nat := {}
     let mut idx := 0
@@ -604,7 +621,9 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       used := used.insert base (cnt + 1)
       let nm := if cnt == 0 then base else s!"{base}_{cnt + 1}"
       let body ← runTr mod (trTopBranch b)
-      withRef stepDef.ref <| elabCommand (← `(command| action $(mkId nm) { $body }))
+      let cmd ← `(command| action $(mkId nm) { $body })
+      trace[veil.debug] m!"Quint action: {cmd}"
+      withRef stepDef.ref <| elabCommand cmd
   -- candidate invariants
   let mut cands : Std.HashMap (Name × String) Syntax := quintInvCandidateExt.getState (← getEnv)
   for qd in mod.defs.values do
@@ -627,17 +646,38 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
 
 /-- `quint_invariant inv_1, ..., inv_n` declares the boolean `val`s `inv_i` of the Quint module
 elaborated last as Veil invariants (`invariant [inv_i] ...`). -/
-syntax (name := quintInvariantCmd) "quint_invariant " ident,+ : command
+syntax (name := quintInvariantCmd) "quint_invariant " quint_ident,+ : command
 
 @[command_elab quintInvariantCmd] def elabQuintInvariant : CommandElab := fun stx => do
   let cands := quintInvCandidateExt.getState (← getEnv)
   let modName ← getCurrNamespace
   for id in stx[1].getSepArgs do
-    let n := id.getId.toString (escape := false)
+    let n := identStr id
     let some t := cands[(modName, n)]?
       | throwErrorAt id "`{n}` is not a boolean `val` of the Quint module `{modName}`"
     let t : Term := ⟨t⟩
     let nid := mkIdentFrom id (Name.mkSimple (leanStr n))
     withRef id <| elabCommand (← `(command| invariant [$nid] $t))
+
+end Veil.Quint
+
+namespace Veil.Quint
+open Lean Elab Command
+
+/-- `quint_constraint c_1, ..., c_n` declares the boolean `val`s `c_i` of the Quint module as Veil
+state constraints (`state_constraint [c_i] ...`): the model checker does not explore states that
+violate them, like TLC's `CONSTRAINT`. -/
+syntax (name := quintConstraintCmd) "quint_constraint " quint_ident,+ : command
+
+@[command_elab quintConstraintCmd] def elabQuintConstraint : CommandElab := fun stx => do
+  let cands := quintInvCandidateExt.getState (← getEnv)
+  let modName ← getCurrNamespace
+  for id in stx[1].getSepArgs do
+    let n := identStr id
+    let some t := cands[(modName, n)]?
+      | throwErrorAt id "`{n}` is not a boolean `val` of the Quint module `{modName}`"
+    let t : Term := ⟨t⟩
+    let nid := mkIdentFrom id (Name.mkSimple (leanStr n))
+    withRef id <| elabCommand (← `(command| state_constraint [$nid] $t))
 
 end Veil.Quint

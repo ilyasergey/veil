@@ -1,0 +1,112 @@
+module
+
+public import Veil.Quint
+
+/-!
+# Quint example `language-features/counters.qnt`
+
+Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0d766cd0/examples/language-features/counters.qnt
+(Apache-2.0). The Quint text below is the original, with the comment markers
+`//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
+`scripts/quint2veil.py` does this rewrite.
+
+The module elaborates into a Veil module; no Veil checks are configured for it.
+-/
+
+-- a simple demonstration of actions and runs
+module counters {
+  var n: int
+
+  -- initialize the state machine
+  action init = {
+    n' = 1
+  }
+
+  -- divide n by 2, when n is even
+  action OnEven = all {
+    n % 2 == 0,
+    n' = n / 2,
+  }
+
+  -- double n, when n is divisible by 3
+  action OnDivByThree = all {
+    n % 3 == 0,
+    n' = 2 * n
+  }
+
+  -- increment n, when n is positive
+  action OnPositive = all {
+    n > 0,
+    n' = n + 1
+  }
+
+  -- The state machine is composed of three actions:
+  --  - divide n by 2, when n is even
+  --  - double n, when n is divisible by 3
+  --  - increment n, when n is positive
+  --
+  -- Note that the three actions are not mutually exclusive.
+  action step = any {
+    OnEven,
+    OnDivByThree,
+    OnPositive
+  }
+
+  -- the run, where n goes via 1, 2, 3, 6, 3
+  run run1 = {
+    (n' = 1)
+      .then(n' = 2)
+      .then(n' = 3)
+      .then(n' = 6)
+      .then(n' = 3)
+  }
+
+  -- the run that initialized with init and
+  -- executes OnPositive twice, OnDivByThree, and OnEven
+  run run2 = {
+    init
+      .then(OnPositive)
+      .then(OnPositive)
+      .then(OnDivByThree)
+      .then(OnEven)
+  }
+
+  -- execute init and then step four times
+  run run3 = {
+    init.then((4).reps(_ => step))
+  }
+
+  -- execute init and then step ten times, while asserting n < 5
+  run run4 = {
+    init.then((10).reps(_ => all {
+      assert(n < 5),
+      step,
+    }))
+  }
+
+  -- this test should not fail
+  run passingTest = {
+    init.then((10).reps(_ => all {
+        assert(n > 0),
+        step,
+    }))
+  }
+
+  -- this tests for a failing condition
+  run failingTest = {
+    init
+      .then(all {
+         n == 0,
+         step,
+       })
+      .fail()
+  }
+
+  -- this is just a value, and it should be ignored as a test
+  val ignoredTest = 1
+}
+
+#gen_spec
+#model_check { } { } (maxDepth := 5)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end counters
