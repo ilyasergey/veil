@@ -168,5 +168,5 @@ module DiningPhilosophers5 {
 
 quint_invariant TypeOk, Safety
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end DiningPhilosophers5

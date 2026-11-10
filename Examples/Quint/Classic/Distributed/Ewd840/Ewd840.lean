@@ -202,5 +202,5 @@ module ewd840_3 {
 
 quint_invariant TypeOK, Inv, TerminationDetection
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end ewd840_3

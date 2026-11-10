@@ -376,8 +376,8 @@ module verification {
 
 quint_invariant correctness, IndInv
 #gen_spec
-#model_check interpreted { } { } (maxDepth := 5)
-#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+#quint_verify { } { } (maxDepth := 5)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end verification
 
 module simulation {

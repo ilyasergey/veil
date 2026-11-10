@@ -79,5 +79,6 @@ module play_rock_paper_scissors {
 
 quint_invariant winInv
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
+quint_bmc 3 winInv
 end play_rock_paper_scissors

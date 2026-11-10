@@ -99,5 +99,5 @@ module teaching {
 
 quint_invariant correctness
 #gen_spec
-#model_check { } { }
+#quint_verify { } { }
 end teaching

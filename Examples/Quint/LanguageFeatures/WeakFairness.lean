@@ -46,5 +46,5 @@ module weakFairness {
 }
 
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end weakFairness

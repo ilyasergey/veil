@@ -269,6 +269,15 @@ namespace Map
 
 end Map
 
+/-- `m.in(setOfMaps(K, V))`: `m` has the keys `K` and its values are in `V`. -/
+def Set.memSetOfMaps [Ord β] [TransOrd β] [Inhabited β] (m : Quint.Map α β) (ks : Quint.Set α)
+    (vs : Quint.Set β) : Prop :=
+  Quint.Map.keys m = ks ∧ ∀ k, k ∈ ks → Quint.Map.get m k ∈ vs
+
+instance [Ord β] [TransOrd β] [LawfulEqOrd β] [Inhabited β] [DecidableEq α] (m : Quint.Map α β)
+    (ks : Quint.Set α) (vs : Quint.Set β) : Decidable (Set.memSetOfMaps m ks vs) := by
+  unfold Set.memSetOfMaps; infer_instance
+
 /-! ## Lists -/
 
 namespace List

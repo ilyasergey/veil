@@ -145,5 +145,5 @@ module quint_team_secret_santa {
 quint_invariant inv
 #gen_spec
 set_option veil.violationIsError false in
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end quint_team_secret_santa

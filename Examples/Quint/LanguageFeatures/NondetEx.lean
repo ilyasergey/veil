@@ -10,7 +10,9 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Nondeterminism. `mirrorInv` is checked by depth-bounded model checking, by
+simulation, and by Veil's symbolic bounded model checker (`quint_bmc`, SMT) for every execution of
+up to three steps.
 -/
 
 -- demonstrating non-trivial behavior of nondet and oneOf
@@ -61,7 +63,9 @@ module nondetEx {
         })
 }
 
+quint_invariant mirrorInv
 #gen_spec
-#model_check interpreted { } { } (maxDepth := 3)
-#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+quint_bmc 3 mirrorInv
 end nondetEx

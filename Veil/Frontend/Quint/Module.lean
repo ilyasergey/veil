@@ -1,6 +1,8 @@
 module
 
 public meta import Veil.Frontend.Quint.Elab
+public meta import Veil.Frontend.Quint.Report
+public meta import Veil.Frontend.DSL.Infra.TraceSyntax
 public import Veil.Frontend.Quint.Prelude
 
 /-!
@@ -26,10 +28,28 @@ structure Item where
   /-- `import M as I`: prefix for the top-level names of `M` -/
   pfx? : Option String := none
 
+/-- Choose the alternative of an ambiguous `type T = ...` declaration. -/
+def pickTypeDecl (dcl : Syntax) : Syntax :=
+  if dcl.isOfKind choiceKind then
+    let aliasTy := dcl.getArgs.find? (·.isOfKind ``quintTypeAlias)
+    let sum? := dcl.getArgs.find? (·.isOfKind ``quintTypeSum)
+    match aliasTy, sum? with
+    | some a, some s =>
+      -- a sum type needs `|`, two variants, or an argument
+      let sd := s[3]
+      let variants := #[sd[1]] ++ (sd[2].getArgs.filter (fun g => !g.isAtom) |>.map fun g => g[1])
+      if sd[0].getNumArgs > 0 || variants.size > 1 || variants.any (fun v => v[1].getNumArgs > 0)
+      then s else a
+    | some a, none => a
+    | none, some s => s
+    | none, none => dcl[0]
+  else dcl
+
 /-- Top-level names declared by a list of declarations. -/
 def declNames (decls : Array Syntax) : Std.HashSet String :=
   decls.foldl (fun acc dcl =>
-    let alts := if dcl.isOfKind choiceKind then dcl.getArgs else #[dcl]
+    -- an ambiguous `type T = U` is an alias (see `pickTypeDecl`)
+    let alts := #[pickTypeDecl dcl]
     alts.foldl (fun acc dcl =>
       if dcl.isOfKind ``quintConst || dcl.isOfKind ``quintVar then acc.insert (qualIdParts dcl[1]).1
       else if dcl.isOfKind ``quintOper then acc.insert (parseOperDef dcl[0]).name
@@ -136,23 +156,6 @@ structure Collected where
   defOrder : Array String := #[]
   assumes : Array (String × Syntax) := #[]
   constOrder : Array String := #[]
-
-/-- Choose the alternative of an ambiguous `type T = ...` declaration. -/
-def pickTypeDecl (dcl : Syntax) : Syntax :=
-  if dcl.isOfKind choiceKind then
-    let aliasTy := dcl.getArgs.find? (·.isOfKind ``quintTypeAlias)
-    let sum? := dcl.getArgs.find? (·.isOfKind ``quintTypeSum)
-    match aliasTy, sum? with
-    | some a, some s =>
-      -- a sum type needs `|`, two variants, or an argument
-      let sd := s[3]
-      let variants := #[sd[1]] ++ (sd[2].getArgs.filter (fun g => !g.isAtom) |>.map fun g => g[1])
-      if sd[0].getNumArgs > 0 || variants.size > 1 || variants.any (fun v => v[1].getNumArgs > 0)
-      then s else a
-    | some a, none => a
-    | none, some s => s
-    | none, none => dcl[0]
-  else dcl
 
 def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
   let mut c : Collected := { mod := { name := modName } }
@@ -321,6 +324,9 @@ partial def looksBoolean (mod : ModInfo) (stx : Syntax) : Bool :=
   | `(quint_expr| $_ <= $_) | `(quint_expr| $_ > $_) | `(quint_expr| $_ >= $_)
   | `(quint_expr| $_ and $_) | `(quint_expr| $_ or $_) | `(quint_expr| $_ iff $_)
   | `(quint_expr| $_ implies $_) | `(quint_expr| and { $_,* }) | `(quint_expr| or { $_,* }) => true
+  | `(quint_expr| all { $es,* }) | `(quint_expr| any { $es,* }) =>
+    -- `all`/`any` over boolean expressions (not actions)
+    es.getElems.all fun e => looksBoolean mod e
   | `(quint_expr| if ($_) $a else $b) => looksBoolean mod a && looksBoolean mod b
   | `(quint_expr| $_:quintOperDef $b) => looksBoolean mod b
   | `(quint_expr| $_:quintValTuple $b) => looksBoolean mod b
@@ -676,6 +682,15 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
     let t' ← runTr mod (trType t)
     elabCommand (← `(command| individual $(mkId n) : $t'))
   elabCommand (← `(command| #gen_state))
+  -- the variables, for Quint-style reports (`#quint_verify`, `#quint_run`)
+  let varInfo := mod.varOrder.map fun v =>
+    let isMap := match mod.vars[v]? with
+      | some t => match t with
+        | `(quint_type| $_ -> $_) => true
+        | _ => false
+      | none => false
+    (leanStr v, v, isMap)
+  modifyEnv (quintVarsExt.modifyState · (·.insert modName varInfo))
   -- ghost definitions
   for (qd, isRel) in ghostDefs do
     try
@@ -776,5 +791,42 @@ syntax (name := quintConstraintCmd) "quint_constraint " quint_ident,+ : command
     let t : Term := ⟨t⟩
     let nid := mkIdentFrom id (Name.mkSimple (leanStr n))
     withRef id <| elabCommand (← `(command| state_constraint [$nid] $t))
+
+end Veil.Quint
+
+namespace Veil.Quint
+open Lean Elab Command
+
+/-- `quint_bmc k inv_1, ..., inv_n` checks with Veil's symbolic bounded model checker (SMT) that no
+execution of at most `k` steps (`k ≥ 2`) violates the boolean `val`s `inv_i`, for every value of
+the module's parameters: the counterpart of `quint verify --max-steps=k --invariant=...`
+(Apalache). It needs a state that the SMT backend handles (integers, booleans, sum types and
+records of these, not sets or maps). -/
+syntax (name := quintBmcCmd) "quint_bmc " num quint_ident,+ : command
+
+@[command_elab quintBmcCmd] def elabQuintBmc : CommandElab := fun stx => do
+  let cands := quintInvCandidateExt.getState (← getEnv)
+  let modName ← getCurrNamespace
+  let k : TSyntax `num := ⟨stx[1]⟩
+  for id in stx[2].getSepArgs do
+    let n := identStr id
+    let some t := cands[(modName, n)]?
+      | throwErrorAt id "`{n}` is not a boolean `val` of the Quint module `{modName}`"
+    let t : Term := ⟨t⟩
+    let nid := mkIdentFrom id (Name.mkSimple (leanStr n ++ s!"_bmc{k.getNat}"))
+    let cmd ← `(command| unsat trace [$nid] {
+        any $k:num actions
+        assert (¬ $t)
+      })
+    -- run it, keep Veil's messages, and report as `quint verify` (Apalache) does
+    let (msgs, ms) ← withRef id <| elabCollecting cmd
+    if msgs.hasErrors then
+      let texts ← msgs.toList.mapM (·.data.toString)
+      let vars := (quintVarsExt.getState (← getEnv))[modName]?.getD #[]
+      let states := parseStates ("\n".intercalate texts)
+      let exec := if states.isEmpty then "" else renderStates vars states ++ "\n"
+      logInfoAt id (exec ++ s!"[violation] Found an issue ({ms}ms).\n  violates: {n}")
+    else
+      logInfoAt id s!"[ok] No violation of {n} found up to {k.getNat} steps ({ms}ms)."
 
 end Veil.Quint

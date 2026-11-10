@@ -2,6 +2,7 @@ module
 
 public import Veil.Frontend.Quint.Prelude
 public meta import Lean
+public import Veil.Frontend.DSL.Infra.SmtSimp
 
 /-!
 # Tactics for proofs about Quint specifications
@@ -32,3 +33,7 @@ macro_rules
         | grind [Quint.Map.get_mapBy]
         | (simp_all [Quint.Map.get_mapBy]; done)
         | (simp_all [Quint.Map.get_mapBy]; grind [Quint.Map.get_mapBy])))
+
+/- Membership in a set literal is a disjunction of equalities, which the SMT backend translates
+(it cannot translate the set itself). -/
+attribute [smtSimp] Quint.Set.mem_ofList_iff List.mem_cons List.not_mem_nil

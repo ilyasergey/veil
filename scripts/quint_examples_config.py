@@ -21,20 +21,21 @@ SIM = '(numTraces := 1000) (maxSteps := 20) (seed := 42)'
 EXPECT = 'set_option veil.violationIsError false in\n'
 
 
-def sim(module, invariants=(), inst='{ }', theory='{ }', opts=SIM, extra='', end=True):
+def sim(module, invariants=(), inst='{ }', theory='{ }', opts=SIM, extra='', end=True, violation=False):
     """A Veil section that declares invariants and runs random simulation (like `quint run`)."""
     s = ''
     if invariants:
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += f'#simulate {inst} {theory} {opts}\n'
+    s += (EXPECT if violation else '') + f'#quint_run {inst} {theory} {opts}\n'
     if end:
         s += f'end {module}\n'
     return s
 
 
-def both(module, invariants=(), depth=3, extra='', inst='{ }', violation=False):
+def both(module, invariants=(), depth=3, extra='', inst='{ }', violation=False, mode='interpreted',
+         bmc=None):
     """Depth-bounded model checking (like `quint verify --max-steps`) and simulation.
     With `violation`, a violation is expected and reported as information."""
     s = ''
@@ -42,8 +43,10 @@ def both(module, invariants=(), depth=3, extra='', inst='{ }', violation=False):
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += (EXPECT if violation else '') + f'#model_check interpreted {inst} {{ }} (maxDepth := {depth})\n'
-    s += (EXPECT if violation else '') + f'#simulate {inst} {{ }} {SIM}\n'
+    s += (EXPECT if violation else '') + f'#quint_verify{(" " + mode) if mode else ""} {inst} {{ }} (maxDepth := {depth})\n'
+    s += (EXPECT if violation else '') + f'#quint_run {inst} {{ }} {SIM}\n'
+    if bmc:
+        s += f'quint_bmc {bmc[0]} ' + ', '.join(bmc[1]) + '\n'
     s += f'end {module}\n'
     return s
 
@@ -58,14 +61,16 @@ INIT_NEXT = ""'set_option quint.init "Init"\nset_option quint.step "Next"\n'
 
 
 def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=True, mode='interpreted',
-       violation=False):
+       violation=False, bmc=None):
     """A Veil section that declares invariants, generates the specification and model checks it."""
     s = ''
     if invariants:
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += (EXPECT if violation else '') + f'#model_check{(" " + mode) if mode else ""} {inst} {theory}{(" " + opts) if opts else ""}\n'
+    s += (EXPECT if violation else '') + f'#quint_verify{(" " + mode) if mode else ""} {inst} {theory}{(" " + opts) if opts else ""}\n'
+    if bmc:
+        s += f'quint_bmc {bmc[0]} ' + ', '.join(bmc[1]) + '\n'
     if end:
         s += f'end {module}\n'
     return s
@@ -153,7 +158,7 @@ state constraints, TLC's `CONSTRAINT`).""",
     },
     'classic/sequential/BinSearch/BinSearch.qnt': {
         'notes': """Binary search, instance `BinSearch10`.""",
-        'tails': {'BinSearch10': mc('BinSearch10')},
+        'tails': {'BinSearch10': mc('BinSearch10', ['Postcondition', 'InBounds'])},
     },
     'puzzles/river/river.qnt': {
         'notes': """The river crossing puzzle.""",
@@ -168,21 +173,21 @@ state constraints, TLC's `CONSTRAINT`).""",
 (`properValues`: at most `MAX_FAULTS` crashes) `agreement` holds; with `badValues` (more crashes
 than tolerated) it is violated, which Quint's README documents.""",
         'tails': {
-            'properValues': both('properValues', ['agreement', 'validity'], depth=2),
-            'badValues': both('badValues', ['agreement'], depth=2, violation=True),
+            'properValues': sim('properValues', ['agreement', 'validity']),
+            'badValues': sim('badValues', ['agreement'], violation=True),
         },
     },
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
         'notes': """k-set agreement, on top of `ConsensusAlg`.""",
         'tails': {
-            'KSetProperValues': both('KSetProperValues', ['kSetAgreement'], depth=2),
-            'KSetBadValues': both('KSetBadValues', ['kSetAgreement'], depth=2, violation=True),
+            'KSetProperValues': sim('KSetProperValues', ['kSetAgreement']),
+            'KSetBadValues': sim('KSetBadValues', ['kSetAgreement'], violation=True),
         },
     },
     'classic/distributed/Bakery/bakery.qnt': {
         'notes': """Lamport's bakery algorithm, instance `verification`. Quint checks the inductive
 invariant `IndInv` with Apalache; here `correctness` and `IndInv` are model checked.""",
-        'tails': {'verification': both('verification', ['correctness', 'IndInv'], depth=5)},
+        'tails': {'verification': both('verification', ['correctness', 'IndInv'], depth=5, mode='')},
     },
     'classic/distributed/ClockSync/clockSync6.qnt': {
         'notes': """Clock synchronization, instance `clock_sync4`, invariant `skew_inv`.""",
@@ -212,7 +217,8 @@ end in a stalemate), as Quint's comment says.""",
     },
     'games/rock_paper_scissors/play_rock_paper_scissors.qnt': {
         'notes': """Rock, paper, scissors.""",
-        'tails': {'play_rock_paper_scissors': mc('play_rock_paper_scissors', ['winInv'])},
+        'tails': {'play_rock_paper_scissors': mc('play_rock_paper_scissors', ['winInv'],
+                                                 bmc=(3, ['winInv']))},
     },
     'games/mafia_werewolf/play_mafia.qnt': {
         'notes': """Mafia (Werewolf).""",
@@ -250,7 +256,11 @@ model checker and the simulator use the bounded copy below.""",
     'language-features/imports.qnt': {'notes': LENIENT_NOTE, 'pre': {'Math': LENIENT}},
     'cosmos/ics23/ics23.qnt': {'notes': LENIENT_NOTE, 'pre': {'basics': LENIENT}},
     'language-features/option.qnt': {'tails': {'option': both('option', depth=3)}},
-    'language-features/nondetEx.qnt': {'tails': {'nondetEx': both('nondetEx', depth=3)}},
+    'language-features/nondetEx.qnt': {
+        'notes': """Nondeterminism. `mirrorInv` is checked by depth-bounded model checking, by
+simulation, and by Veil's symbolic bounded model checker (`quint_bmc`, SMT) for every execution of
+up to three steps.""",
+        'tails': {'nondetEx': both('nondetEx', ['mirrorInv'], depth=3, bmc=(3, ['mirrorInv']))}},
     'language-features/weakFairness.qnt': {'tails': {'weakFairness': mc('weakFairness')}},
     'language-features/strongFairness.qnt': {'tails': {'strongFairness': mc('strongFairness')}},
     'verification/defaultOpNames.qnt': {

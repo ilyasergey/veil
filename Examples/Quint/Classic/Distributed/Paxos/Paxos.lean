@@ -630,5 +630,5 @@ module Paxos_small_val2_accept3_quorum2 {
 quint_invariant Inv
 #gen_spec
 set_option veil.violationIsError false in
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end Paxos_small_val2_accept3_quorum2

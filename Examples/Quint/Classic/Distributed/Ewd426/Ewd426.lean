@@ -93,7 +93,7 @@ module ewd426 {
 }
 
 #gen_spec
-#model_check { } { }
+#quint_verify { } { }
 end ewd426
 
 module broken_ewd426 {

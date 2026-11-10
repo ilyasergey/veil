@@ -122,5 +122,5 @@ module ewd426_4 {
 }
 
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end ewd426_4

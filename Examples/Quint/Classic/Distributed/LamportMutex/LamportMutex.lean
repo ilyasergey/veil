@@ -203,6 +203,6 @@ module LamportMutex_3_10 {
 quint_invariant Mutex
 quint_constraint ClockConstraint, BoundedNetwork
 #gen_spec
-#model_check interpreted { } { } (maxDepth := 12)
-#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+#quint_verify interpreted { } { } (maxDepth := 12)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end LamportMutex_3_10

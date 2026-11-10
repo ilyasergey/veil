@@ -219,5 +219,5 @@ module two_phase_commit_tests {
 
 quint_invariant inv
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end two_phase_commit_tests

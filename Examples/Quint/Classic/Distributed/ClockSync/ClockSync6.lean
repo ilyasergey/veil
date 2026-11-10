@@ -401,6 +401,6 @@ module clock_sync4_small {
 
 quint_invariant skew_inv
 #gen_spec
-#model_check interpreted { } { } (maxDepth := 4)
-#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+#quint_verify interpreted { } { } (maxDepth := 4)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end clock_sync4_small

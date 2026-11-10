@@ -269,5 +269,5 @@ module two_layered_cache {
 }
 
 #gen_spec
-#model_check { } { }
+#quint_verify { } { }
 end two_layered_cache

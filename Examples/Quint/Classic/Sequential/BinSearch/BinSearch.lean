@@ -189,6 +189,7 @@ module BinSearch10 {
   ).*
 }
 
+quint_invariant Postcondition, InBounds
 #gen_spec
-#model_check interpreted { } { }
+#quint_verify interpreted { } { }
 end BinSearch10

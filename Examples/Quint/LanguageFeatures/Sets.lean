@@ -53,6 +53,6 @@ module sets {
 }
 
 #gen_spec
-#model_check interpreted { } { } (maxDepth := 3)
-#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end sets

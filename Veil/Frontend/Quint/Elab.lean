@@ -355,6 +355,25 @@ def nullaryMethods : List String :=
   ["size", "powerset", "flatten", "keys", "length", "head", "tail", "indices", "isFinite",
    "chooseSome", "getOnlyElement", "fieldNames", "last", "not"]
 
+/-- `powerset(S)`/`S.powerset()` or `setOfMaps(K, V)`/`K.setOfMaps(V)`: the operator and its
+arguments. -/
+def setBuilder? (stx : Syntax) : Option (String × Array Syntax) :=
+  let s := unwrap stx
+  if !isApp s then none else
+  let args := sepArgs s[2]
+  match asQualId? s[0] with
+  | some q =>
+    let (n, fs) := qualIdParts q
+    match fs with
+    | [] => if n == "powerset" || n == "setOfMaps" then some (n, args) else none
+    | [m] => if m == "powerset" || m == "setOfMaps" then
+        some (m, #[Syntax.node .none `Veil.Quint.quintName #[mkIdent (Name.mkSimple n)]] ++ args) else none
+    | _ => none
+  | none =>
+    match dot? s[0] with
+    | some (e, m) => if m == "powerset" || m == "setOfMaps" then some (m, #[e] ++ args) else none
+    | none => none
+
 /-- `Int`, `Nat`, `Bool` used as sets. -/
 inductive InfSet where | int | nat | bool
 
@@ -385,6 +404,9 @@ def paramName (p : Syntax) : String :=
 mutual
 
 partial def trExpr (stx : Syntax) : TrM Term := withRef stx do
+  -- a bare (qualified) name built by the translation itself
+  if stx.getKind == `Veil.Quint.quintName then
+    return ← trBaseName stx (stx[0].getId.toString (escape := false))
   if let some (e, fs) := dots? stx then
     let mut acc ← trExpr e
     for f in fs do acc ← trField acc f e
@@ -823,12 +845,21 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
     match (stxAt 0).bind (infSetIn? (← read).mod) with
     | some .int => `(True)
     | some .nat => `($(← arg 1) ≥ 0)
-    | _ => `($(← arg 1) ∈ $(← arg 0))
+    | _ =>
+      match (stxAt 0).bind setBuilder? with
+      | some ("powerset", #[sa]) => do `(Quint.Set.subseteq $(← arg 1) $(← trExpr sa))
+      | some ("setOfMaps", #[ka, va]) => do `(Quint.Set.memSetOfMaps $(← arg 1) $(← trExpr ka) $(← trExpr va))
+      | _ => `($(← arg 1) ∈ $(← arg 0))
   | "in", 2 => do
     match (stxAt 1).bind (infSetIn? (← read).mod) with
     | some .int => `(True)
     | some .nat => `($(← arg 0) ≥ 0)
-    | _ => `($(← arg 0) ∈ $(← arg 1))
+    | _ =>
+      -- `x.in(powerset(S))` and `m.in(setOfMaps(K, V))` without enumerating the right side
+      match (stxAt 1).bind setBuilder? with
+      | some ("powerset", #[sa]) => do `(Quint.Set.subseteq $(← arg 0) $(← trExpr sa))
+      | some ("setOfMaps", #[ka, va]) => do `(Quint.Set.memSetOfMaps $(← arg 0) $(← trExpr ka) $(← trExpr va))
+      | _ => `($(← arg 0) ∈ $(← arg 1))
   | "union", 2 => do `($(← arg 0) ∪ $(← arg 1))
   | "intersect", 2 => do `($(← arg 0) ∩ $(← arg 1))
   | "exclude", 2 => do `($(← arg 0) \ $(← arg 1))
