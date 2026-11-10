@@ -1,0 +1,132 @@
+{
+ "TwoPhaseCommit": {
+  "instance": "two_phase_commit_3",
+  "states": 288,
+  "tlc_ms": 277,
+  "tlc_wall_s": 3.6,
+  "veil": {
+   "1": 22,
+   "8": 20
+  }
+ },
+ "Teaching": {
+  "instance": "teaching",
+  "states": 7216823,
+  "tlc_ms": 10654,
+  "tlc_wall_s": 14.0,
+  "veil": {
+   "1": 11369,
+   "8": 8935
+  }
+ },
+ "Mutex": {
+  "instance": "mutex",
+  "states": 8,
+  "tlc_ms": 249,
+  "tlc_wall_s": 3.58,
+  "veil": {
+   "1": 21,
+   "8": 19
+  }
+ },
+ "Ewd840": {
+  "instance": "ewd840_3",
+  "states": 302,
+  "tlc_ms": 276,
+  "tlc_wall_s": 3.63,
+  "veil": {
+   "1": 22,
+   "8": 19
+  }
+ },
+ "Ewd426": {
+  "instance": "ewd426",
+  "states": 117649,
+  "tlc_ms": 477,
+  "tlc_wall_s": 3.75,
+  "veil": {
+   "1": 821,
+   "8": 741
+  }
+ },
+ "Ewd4263": {
+  "instance": "ewd426_3",
+  "states": 729,
+  "tlc_ms": 269,
+  "tlc_wall_s": 3.61,
+  "veil": {
+   "1": 37,
+   "8": 22
+  }
+ },
+ "Ewd4264": {
+  "instance": "ewd426_4",
+  "states": 1024,
+  "tlc_ms": 287,
+  "tlc_wall_s": 3.64,
+  "veil": {
+   "1": 48,
+   "8": 41
+  }
+ },
+ "DiningPhilosophers5": {
+  "instance": "DiningPhilosophers5",
+  "states": 352,
+  "tlc_ms": 278,
+  "tlc_wall_s": 3.64,
+  "veil": {
+   "1": 22,
+   "8": 21
+  }
+ },
+ "Reliablebc": {
+  "instance": "reliablebc",
+  "states": 111,
+  "tlc_ms": 266,
+  "tlc_wall_s": 3.71,
+  "veil": {
+   "1": 22,
+   "8": 25
+  }
+ },
+ "TwoLayeredCache": {
+  "instance": "two_layered_cache",
+  "states": 98287,
+  "tlc_ms": 672,
+  "tlc_wall_s": 4.01,
+  "veil": {
+   "1": 386,
+   "8": 193
+  }
+ },
+ "River": {
+  "instance": "river",
+  "states": 20,
+  "tlc_ms": 243,
+  "tlc_wall_s": 3.5,
+  "veil": {
+   "1": 22,
+   "8": 20
+  }
+ },
+ "Prisoners": {
+  "instance": "prisoners3",
+  "states": 70,
+  "tlc_ms": 233,
+  "tlc_wall_s": 3.52,
+  "veil": {
+   "1": 21,
+   "8": 19
+  }
+ },
+ "Tictactoe": {
+  "instance": "tictactoe",
+  "states": 871,
+  "tlc_ms": 403,
+  "tlc_wall_s": 3.79,
+  "veil": {
+   "1": 26,
+   "8": 21
+  }
+ }
+}

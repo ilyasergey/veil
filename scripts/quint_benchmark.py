@@ -64,9 +64,8 @@ def veil_times(results_path):
         runs = entry.get('runs', []) if isinstance(entry, dict) else []
         for r in runs:
             t = r.get('threads')
-            ms = r.get('search_ms') or r.get('elapsed_ms') or r.get('checker_elapsed_ms')
-            if ms is None and isinstance(r.get('progress'), dict):
-                ms = r['progress'].get('checker_elapsed_ms')
+            # the binary's wall time, including its start-up (as TLC's time includes the JVM's)
+            ms = round(r['wall_seconds'] * 1000) if r.get('success') and r.get('wall_seconds') is not None else None
             if t is None or ms is None:
                 continue
             cur = out.setdefault(name, {}).get(t)
@@ -97,7 +96,7 @@ ax.set_ylabel("time (ms, log scale)")
 ax.set_xticks(list(xs))
 ax.set_xticklabels([f"{{n}}\\n{{b[n]['states']:,}} states" for n in names], rotation=45, ha="right", fontsize=8)
 ax.legend(fontsize=8)
-ax.set_title("Explicit-state model checking of Quint examples: TLC vs. Veil (search time)")
+ax.set_title("Explicit-state model checking of Quint examples: TLC (via quint) vs. Veil")
 fig.tight_layout()
 fig.savefig({OUT_PNG!r}, dpi=150)
 '''

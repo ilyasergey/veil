@@ -35,9 +35,13 @@ def results_by_file(log: str):
 def describe(src_line: str, mark: str, rest: str) -> str:
     """Describe one result: which command produced it and what it says."""
     depth = re.search(r'maxDepth := (\d+)', src_line)
-    if '#simulate' in src_line:
+    if '#simulate' in src_line or '#quint_run' in src_line:
         kind = 'simulation'
-    elif '#model_check' in src_line:
+    elif '#temporal_check' in src_line:
+        kind = 'temporal'
+    elif 'quint_bmc' in src_line:
+        kind = 'BMC'
+    elif '#model_check' in src_line or '#quint_verify' in src_line:
         kind = f'model checking, depth ≤ {depth.group(1)}' if depth else 'model checking'
     else:
         kind = 'check'
@@ -47,6 +51,8 @@ def describe(src_line: str, mark: str, rest: str) -> str:
         what = f'{int(m.group(1)):,} states'
     elif 'traces' in rest:
         what = re.sub(r'No violation in ', '', rest)
+    elif 'liveness' in rest.lower():
+        what = re.sub(r'No liveness violation ', '', rest)
     elif 'violates:' in rest:
         what = 'violates ' + re.search(r'violates: ([^)]*)', rest).group(1) + (' (expected)' if expected else '')
     else:
@@ -54,8 +60,29 @@ def describe(src_line: str, mark: str, rest: str) -> str:
     return f'{mark} {kind}: {what}'
 
 
+def dashboard(quint):
+    """Quint's own results from examples/README.md: (tests, verify) per example."""
+    out = {}
+    path = os.path.join(quint, 'examples', 'README.md')
+    sym = {':white_check_mark:': '✅', ':x:': '❌'}
+    for line in open(path):
+        m = re.match(r'\| \[([^\]]+)\]\([^)]*\) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \|', line)
+        if not m:
+            continue
+        def norm(x):
+            x = x.strip()
+            for k, v in sym.items():
+                x = x.replace(k, v)
+            x = re.sub(r'<sup>.*?</sup>', '', x)
+            x = re.sub(r'\[\^\w+\]', '', x)
+            return x.strip()
+        out[m.group(1)] = (norm(m.group(4)), norm(m.group(5)))
+    return out
+
+
 def main():
     quint, log = sys.argv[1], sys.argv[2]
+    dash = dashboard(quint)
     res = results_by_file(log)
     comp_path = os.path.join(ROOT, 'Examples', 'Quint', 'compliance.json')
     comp = json.load(open(comp_path)) if os.path.exists(comp_path) else {}
@@ -83,6 +110,9 @@ def main():
                     ref.append(f"TLC `{name}`: {t['distinct']:,} states, {t['verdict']}")
                 else:
                     ref.append(f"TLC `{name}`: {t['verdict']}")
+            if rel in dash:
+                t, v = dash[rel]
+                ref.append(f'Quint dashboard: test {t}, Apalache verify {v}')
             rows.append((rel, lr, checks, ref))
     rows.sort()
     print('| Quint example | Lean file | Veil checks and results | Quint reference |')
