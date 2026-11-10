@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Classic.Distributed.ConsensusAlgorithm.ConsensusAlg
+public meta import Examples.Quint.Classic.Distributed.ConsensusAlgorithm.ConsensusAlg
 
 /-!
 # Quint example `classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt`

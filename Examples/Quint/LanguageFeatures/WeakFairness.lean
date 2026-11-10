@@ -10,7 +10,11 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Weak fairness. Quint checks the temporal properties with TLC
+(`quint verify --backend tlc --temporal ...`); here `#temporal_check` (Lasso, Veil's verified LTL
+checker) checks the same formulas, written in Veil's temporal syntax: `weakFair(finish, vars)` is
+`𝒲ℱ finish`, `p leadsTo q` is `p ↝ q`. As with TLC, the property without fairness fails (the
+system may take `noop` forever).
 -/
 
 -- A non-deterministic spec used to test weak fairness with leadsTo.
@@ -45,6 +49,12 @@ module weakFairness {
   temporal notDoneLeadsToDoneNoFairness = not(done) leadsTo done
 }
 
+temporal (only := check) [eventuallyDone] 𝒲ℱ finish → ◇ ⌜ done ⌝
+temporal (only := check) [notDoneLeadsToDone] 𝒲ℱ finish → (⌜ ¬ done ⌝ ↝ ⌜ done ⌝)
+temporal (only := check) [notDoneLeadsToDoneNoFairness] ⌜ ¬ done ⌝ ↝ ⌜ done ⌝
 #gen_spec
 #quint_verify interpreted { } { }
+#temporal_check [eventuallyDone] [notDoneLeadsToDone] interpreted { } { }
+set_option veil.violationIsError false in
+#temporal_check [notDoneLeadsToDoneNoFairness] interpreted { } { }
 end weakFairness

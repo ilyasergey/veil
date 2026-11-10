@@ -13,6 +13,10 @@ TLC (set JAVA_HOME). Results go to Examples/Quint/compliance.json; the Markdown 
 
 Usage:
     scripts/quint_compliance.py QUINT_CHECKOUT [--quint-dir DIR_WITH_NODE_MODULES] [--only NAME]
+        [--veil-log BUILD_LOG]
+
+With --veil-log, Veil's results are read from a build log of Examples/Quint
+(scripts/quint_build_all.sh) instead of elaborating each file again.
 """
 import json
 import os
@@ -103,6 +107,21 @@ def run_tlc(quint, qdir, f, main, inv, extra, timeout=600):
             'time_ms': int(ms[-1]) if ms else None, 'wall_s': round(wall, 2)}
 
 
+def veil_from_log(lean_rel, log):
+    """Veil's result for a file, from a build log of Examples/Quint (the first model check)."""
+    pat = re.compile(re.escape('Examples/Quint/' + lean_rel) + r':\d+:\d+: (?:error: )?(✅|❌)(.*)')
+    for line in open(log, errors='replace'):
+        m = pat.search(line)
+        if not m:
+            continue
+        ok = VEIL_OK.search(line)
+        if ok:
+            return {'distinct': int(ok.group(1)), 'verdict': 'holds'}
+        if VEIL_BAD.search(line):
+            return {'distinct': None, 'verdict': 'violated'}
+    return {'distinct': None, 'verdict': 'error'}
+
+
 def run_veil(lean_rel, timeout=3600):
     path = os.path.join('Examples', 'Quint', lean_rel)
     out, wall = run_group(['lake', 'env', 'lean', path], ROOT, os.environ.copy(), timeout)
@@ -119,12 +138,13 @@ def main():
     quint = sys.argv[1]
     qdir = sys.argv[sys.argv.index('--quint-dir') + 1] if '--quint-dir' in sys.argv else quint
     only = sys.argv[sys.argv.index('--only') + 1] if '--only' in sys.argv else None
+    log = sys.argv[sys.argv.index('--veil-log') + 1] if '--veil-log' in sys.argv else None
     results = json.load(open(OUT)) if os.path.exists(OUT) else {}
     for name, f, main_, inv, extra, lean in CHECKS:
         if only and only != name:
             continue
         tlc = run_tlc(quint, qdir, f, main_, inv, extra)
-        veil = run_veil(lean)
+        veil = veil_from_log(lean, log) if log else run_veil(lean)
         agree = tlc['verdict'] == veil['verdict'] and (tlc['distinct'] == veil['distinct'])
         results[name] = {'quint_file': f, 'main': main_, 'invariants': inv, 'tlc': tlc, 'veil': veil,
                          'agree': agree}

@@ -54,7 +54,7 @@ module two_phase_commit_3 {
 
 quint_invariant consistencyInv   -- quint ... --invariant=consistencyInv
 #gen_spec
-#model_check { } { }             -- quint verify --backend tlc
+#quint_verify { } { }            -- quint verify --backend tlc
 end two_phase_commit_3
 ```
 

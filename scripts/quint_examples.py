@@ -143,6 +143,8 @@ def generate(quint: str, only=None):
             imports = ['public import Veil.Quint']
             for d in deps(rel, src):
                 imports.append('public import ' + lean_module(d))
+                # the checks evaluate the imported module's definitions at elaboration time
+                imports.append('public meta import ' + lean_module(d))
             notes = cfg.get('notes', DEFAULT_NOTES)
             if reordered:
                 notes += ('\n\nThe modules appear in dependency order (Quint accepts any order; '

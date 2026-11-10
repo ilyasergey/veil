@@ -2,8 +2,11 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Lightclient.Typedefs
+public meta import Examples.Quint.Cosmos.Lightclient.Typedefs
 public import Examples.Quint.Cosmos.Lightclient.Blockchain
+public meta import Examples.Quint.Cosmos.Lightclient.Blockchain
 public import Examples.Quint.Cosmos.Lightclient.LCVerificationApi
+public meta import Examples.Quint.Cosmos.Lightclient.LCVerificationApi
 
 /-!
 # Quint example `cosmos/lightclient/Lightclient.qnt`

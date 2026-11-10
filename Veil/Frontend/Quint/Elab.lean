@@ -376,6 +376,7 @@ def setBuilder? (stx : Syntax) : Option (String × Array Syntax) :=
 
 /-- `Int`, `Nat`, `Bool` used as sets. -/
 inductive InfSet where | int | nat | bool
+deriving Inhabited
 
 partial def infSetIn? (mod : ModInfo) (stx : Syntax) (fuel : Nat := 8) : Option InfSet :=
   match asQualId? (unwrap stx) with
@@ -1248,8 +1249,12 @@ partial def trNondet (qd : QDef) (k : TrM DoItems) : TrM DoItems := do
   let (setT, inf?) ← match setStx with
     | .node _ `quintRecv #[q] =>
       let (n, fs) := qualIdParts q
-      if fs.length == 1 && (n == "Int" || n == "Nat") then
-        pure (← `(Int), some (if n == "Int" then InfSet.int else .nat))
+      let modInfo := (← read).mod
+      let inf? := if fs.length == 1 then
+          infSetIn? modInfo (Syntax.node .none `Veil.Quint.qualRef #[Syntax.node .none ``quintQualId #[mkIdent (Name.mkSimple n), mkNullNode]])
+        else none
+      if fs.length == 1 && (n == "Int" || n == "Nat" || inf?.isSome) then
+        pure (← `(Int), some (if n == "Int" then InfSet.int else if n == "Nat" then .nat else inf?.get!))
       else if fs.length == 1 && n == "Bool" then
         pure (← `(Bool), some InfSet.bool)
       else

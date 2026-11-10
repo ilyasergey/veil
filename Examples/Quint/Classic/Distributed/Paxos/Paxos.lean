@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Classic.Distributed.Paxos.Voting
+public meta import Examples.Quint.Classic.Distributed.Paxos.Voting
 
 /-!
 # Quint example `classic/distributed/Paxos/Paxos.qnt`

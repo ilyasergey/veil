@@ -261,7 +261,22 @@ model checker and the simulator use the bounded copy below.""",
 simulation, and by Veil's symbolic bounded model checker (`quint_bmc`, SMT) for every execution of
 up to three steps.""",
         'tails': {'nondetEx': both('nondetEx', ['mirrorInv'], depth=3, bmc=(3, ['mirrorInv']))}},
-    'language-features/weakFairness.qnt': {'tails': {'weakFairness': mc('weakFairness')}},
+    'language-features/weakFairness.qnt': {
+        'notes': """Weak fairness. Quint checks the temporal properties with TLC
+(`quint verify --backend tlc --temporal ...`); here `#temporal_check` (Lasso, Veil's verified LTL
+checker) checks the same formulas, written in Veil's temporal syntax: `weakFair(finish, vars)` is
+`𝒲ℱ finish`, `p leadsTo q` is `p ↝ q`. As with TLC, the property without fairness fails (the
+system may take `noop` forever).""",
+        'tails': {'weakFairness': '''temporal (only := check) [eventuallyDone] 𝒲ℱ finish → ◇ ⌜ done ⌝
+temporal (only := check) [notDoneLeadsToDone] 𝒲ℱ finish → (⌜ ¬ done ⌝ ↝ ⌜ done ⌝)
+temporal (only := check) [notDoneLeadsToDoneNoFairness] ⌜ ¬ done ⌝ ↝ ⌜ done ⌝
+#gen_spec
+#quint_verify interpreted { } { }
+#temporal_check [eventuallyDone] [notDoneLeadsToDone] interpreted { } { }
+set_option veil.violationIsError false in
+#temporal_check [notDoneLeadsToDoneNoFairness] interpreted { } { }
+end weakFairness
+'''}},
     'language-features/strongFairness.qnt': {'tails': {'strongFairness': mc('strongFairness')}},
     'verification/defaultOpNames.qnt': {
         'notes': """A module without state variables, used to test Quint's options for operator

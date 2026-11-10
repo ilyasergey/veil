@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Lightclient.Typedefs
+public meta import Examples.Quint.Cosmos.Lightclient.Typedefs
 
 /-!
 # Quint example `cosmos/lightclient/LCVerificationApi.qnt`

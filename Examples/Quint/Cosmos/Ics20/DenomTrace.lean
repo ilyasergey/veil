@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Ics20.Base
+public meta import Examples.Quint.Cosmos.Ics20.Base
 
 /-!
 # Quint example `cosmos/ics20/denomTrace.qnt`

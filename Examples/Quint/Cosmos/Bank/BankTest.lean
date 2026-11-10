@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Bank.Bank
+public meta import Examples.Quint.Cosmos.Bank.Bank
 
 /-!
 # Quint example `cosmos/bank/bankTest.qnt`

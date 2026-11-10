@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Spells.BasicSpells
+public meta import Examples.Quint.Spells.BasicSpells
 
 /-!
 # Quint example `classic/distributed/ClockSync/clockSync6.qnt`

@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.LanguageFeatures.Imports
+public meta import Examples.Quint.LanguageFeatures.Imports
 
 /-!
 # Quint example `language-features/importFrom.qnt`

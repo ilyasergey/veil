@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Spells.BasicSpells
+public meta import Examples.Quint.Spells.BasicSpells
 
 /-!
 # Quint example `games/secret-santa/secret_santa.qnt`

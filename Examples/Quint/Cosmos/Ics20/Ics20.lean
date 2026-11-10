@@ -2,9 +2,13 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Ics20.Base
+public meta import Examples.Quint.Cosmos.Ics20.Base
 public import Examples.Quint.Cosmos.Ics20.Bank
+public meta import Examples.Quint.Cosmos.Ics20.Bank
 public import Examples.Quint.Cosmos.Ics20.DenomTrace
+public meta import Examples.Quint.Cosmos.Ics20.DenomTrace
 public import Examples.Quint.Spells.BasicSpells
+public meta import Examples.Quint.Spells.BasicSpells
 
 /-!
 # Quint example `cosmos/ics20/ics20.qnt`

@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cosmos.Tendermint.Tendermint
+public meta import Examples.Quint.Cosmos.Tendermint.Tendermint
 
 /-!
 # Quint example `cosmos/tendermint/TendermintTest.qnt`

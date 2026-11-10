@@ -2,6 +2,7 @@ module
 
 public import Veil.Quint
 public import Examples.Quint.Cryptography.Hashes.Hashes
+public meta import Examples.Quint.Cryptography.Hashes.Hashes
 
 /-!
 # Quint example `cryptography/hashes/hashesTest.qnt`
