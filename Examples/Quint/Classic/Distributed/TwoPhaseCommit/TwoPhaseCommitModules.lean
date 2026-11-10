@@ -175,12 +175,6 @@ module two_phase_commit {
   --/ Two resource managers have not arrived at conflicting decisions
   val inv = RM::consistencyInv(resourceManagers)
 }
-
-quint_invariant inv
-#gen_spec
-#model_check interpreted { } { }
-end two_phase_commit
-
 module two_phase_commit_tests {
   import two_phase_commit(resourceManagers = Set("rm1", "rm2", "rm3")).*
 
@@ -222,3 +216,8 @@ module two_phase_commit_tests {
   --   .then(preparation("rm3"))
   --   .then(commitment)
 }
+
+quint_invariant inv
+#gen_spec
+#model_check interpreted { } { }
+end two_phase_commit_tests

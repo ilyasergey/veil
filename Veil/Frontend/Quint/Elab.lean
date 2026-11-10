@@ -51,6 +51,16 @@ register_option quint.init : String := {
   descr := "the name of the Quint action that defines the initial states"
 }
 
+register_option quint.skipParametric : Bool := {
+  defValue := false
+  descr := "do not elaborate Quint modules with constants into Veil modules (only their instances)"
+}
+
+register_option quint.lenient : Bool := {
+  defValue := false
+  descr := "report Quint actions and definitions that fail to elaborate as warnings and skip them"
+}
+
 register_option quint.step : String := {
   defValue := "step"
   descr := "the name of the Quint action that defines the transitions"
@@ -515,6 +525,9 @@ partial def trBaseName (ref : Syntax) (n : String) : TrM Term := do
       return ← withReader (fun c => { c with locals := {} }) (trExpr dd.body)
   if let some info := ctx.mod.ctors[n]? then
     return mkIdent info.ctorName
+  -- `I::C` for a constructor `C` of a module imported `as I`
+  if let some info := ctx.mod.ctors[((n.splitOn "::").getLastD n)]? then
+    return mkIdent info.ctorName
   if n == "Int" || n == "Nat" then
     throwErrorAt ref "the infinite set `{n}` can only be used in `forall`, `exists`, `in` and `oneOf`"
   -- a Lean name (e.g. from another namespace)
@@ -571,8 +584,8 @@ partial def trCallCore (name : String) (recv? : Option Term) (args : Array Synta
     match ctx.mod.defRepr[name]?.getD .inline with
     | .named id => return ← `($id $argTs*)
     | .inline => return ← inlineDef dd argTs
-  -- sum type constructors
-  if let some info := ctx.mod.ctors[name]? then
+  -- sum type constructors (also `I::C` for a module imported `as I`)
+  if let some info := (ctx.mod.ctors[name]?).orElse fun _ => ctx.mod.ctors[(name.splitOn "::").getLastD name]? then
     let argTs ← args.mapM trExpr
     let argTs := match recv? with | some r => #[r] ++ argTs | none => argTs
     if info.hasArg then
@@ -632,6 +645,25 @@ partial def trQuant (isForall : Bool) (setStx : Syntax) (f : Syntax) : TrM Term 
     | _ =>
       let s ← trExpr setStx
       if isForall then `(∀ $x:ident, $x ∈ $s → $body) else `(∃ $x:ident, $x ∈ $s ∧ $body)
+  -- `tuples(S_1, ..., S_n).forall(((x_1, ..., x_n)) => P)` as nested quantifiers
+  let tuplesArgs? : Option (Array Syntax) :=
+    let uStx := unwrap setStx
+    if isApp uStx then
+      match asQualId? uStx[0] with
+      | some q => if qualIdParts q == ("tuples", []) then some (sepArgs uStx[2]) else none
+      | none => none
+    else none
+  if let some sets := tuplesArgs? then
+    if let some (ps, true, body) := lambda? f then
+      if ps.size == sets.size then
+        let rec nest (i : Nat) : TrM Term := do
+          if h : i < ps.size then
+            bindLocal (paramName ps[i]) fun x => do
+              let s ← trExpr sets[i]!
+              let rest ← nest (i + 1)
+              if isForall then `(∀ $x:ident, $x ∈ $s → $rest) else `(∃ $x:ident, $x ∈ $s ∧ $rest)
+          else trExpr body
+        return ← nest 0
   match lambda? f with
   | some (#[p], false, body) =>
     bindLocal (paramName p) fun x => do mkQ x (← trExpr body)
@@ -853,7 +885,7 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   | "replaceAt", 3 => do `(Quint.List.replaceAt $(← arg 0) $(← arg 1) $(← arg 2))
   | "slice", 3 => do `(Quint.List.slice $(← arg 0) $(← arg 1) $(← arg 2))
   | "select", 2 => do `(List.filter $(← arg 1) $(← arg 0))
-  | "foldl", 3 => do `(List.foldl $(← arg 2) $(← arg 1) $(← arg 0))
+  | "foldl", 3 => do `(Quint.List.foldl $(← arg 0) $(← arg 1) $(← arg 2))
   | "foldr", 3 => do `(Quint.List.foldr $(← arg 0) $(← arg 1) $(← arg 2))
   | "range", 2 => do `(Quint.List.range $(← arg 0) $(← arg 1))
   -- booleans
@@ -999,15 +1031,21 @@ where
         | none => acc
       | _ => acc
     let acc :=
-      match asQualId? s with
-      | some q =>
-        let (n, fs) := qualIdParts q
-        if fs.isEmpty && !visited.contains n then
-          match mod.defs[n]? with
-          | some dd => if dd.kind == .action then go dd.body acc (visited.insert n) else acc
-          | none => acc
-        else acc
-      | none => acc
+      if s.isOfKind ``quintQualId then
+        -- a call of an action, directly (`A(x)`) or as a method (`x.A()`)
+        let (n, fs) := qualIdParts s
+        (n :: fs).foldl (fun acc m =>
+          if visited.contains m then acc else
+          match mod.defs[m]? with
+          | some dd => if dd.kind == .action then go dd.body acc (visited.insert m) else acc
+          | none => acc) acc
+      else match dots? s with
+        | some (_, fs) => fs.foldl (fun acc m =>
+            if visited.contains m then acc else
+            match mod.defs[m]? with
+            | some dd => if dd.kind == .action then go dd.body acc (visited.insert m) else acc
+            | none => acc) acc
+        | none => acc
     s.getArgs.foldl (fun acc a => go a acc visited) acc
 
 abbrev DoItems := Array (TSyntax ``Lean.Parser.Term.doSeqItem)

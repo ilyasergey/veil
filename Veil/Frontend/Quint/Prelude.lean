@@ -294,6 +294,9 @@ def range (s e : Int) : _root_.List Int :=
 /-- `l.indices()` -/
 @[inline] def indices (l : _root_.List α) : Quint.Set Int :=
   ExtTreeSet.ofList (range 0 (l.length : Int)) compare
+/-- `l.foldl(init, f)`; the initial value comes first, so that it fixes the accumulator's type
+before the function is elaborated. -/
+@[inline] def foldl (l : _root_.List α) (init : β) (f : β → α → β) : β := l.foldl f init
 /-- `l.foldr(init, f)` -/
 @[inline] def foldr (l : _root_.List α) (init : β) (f : α → β → β) : β := l.foldr f init
 

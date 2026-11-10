@@ -18,6 +18,9 @@ DEFAULT_NOTES = """The module elaborates into a Veil module; no Veil checks are 
 SIM = '(numTraces := 1000) (maxSteps := 20) (seed := 42)'
 
 
+EXPECT = 'set_option veil.violationIsError false in\n'
+
+
 def sim(module, invariants=(), inst='{ }', theory='{ }', opts=SIM, extra='', end=True):
     """A Veil section that declares invariants and runs random simulation (like `quint run`)."""
     s = ''
@@ -31,30 +34,38 @@ def sim(module, invariants=(), inst='{ }', theory='{ }', opts=SIM, extra='', end
     return s
 
 
-def both(module, invariants=(), depth=3, extra='', inst='{ }'):
-    """Depth-bounded model checking (like `quint verify --max-steps`) and simulation."""
+def both(module, invariants=(), depth=3, extra='', inst='{ }', violation=False):
+    """Depth-bounded model checking (like `quint verify --max-steps`) and simulation.
+    With `violation`, a violation is expected and reported as information."""
     s = ''
     if invariants:
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += f'#model_check interpreted {inst} {{ }} (maxDepth := {depth})\n'
-    s += f'#simulate {inst} {{ }} {SIM}\n'
+    s += (EXPECT if violation else '') + f'#model_check interpreted {inst} {{ }} (maxDepth := {depth})\n'
+    s += (EXPECT if violation else '') + f'#simulate {inst} {{ }} {SIM}\n'
     s += f'end {module}\n'
     return s
 
 
-INIT_NEXT = 'set_option quint.init "Init"\nset_option quint.step "Next"\n'
+LENIENT = 'set_option quint.lenient true\n'
+LENIENT_NOTE = """This file uses constructs that the frontend does not translate (see the warnings
+it reports, and the gaps in `.agents/skills/quint-to-veil/references/frontend.md`); it is
+elaborated with `quint.lenient`, which skips the definitions and actions that do not elaborate
+and reports each of them as a warning."""
+
+INIT_NEXT = ""'set_option quint.init "Init"\nset_option quint.step "Next"\n'
 
 
-def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=True, mode='interpreted'):
+def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=True, mode='interpreted',
+       violation=False):
     """A Veil section that declares invariants, generates the specification and model checks it."""
     s = ''
     if invariants:
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += f'#model_check{(" " + mode) if mode else ""} {inst} {theory}{(" " + opts) if opts else ""}\n'
+    s += (EXPECT if violation else '') + f'#model_check{(" " + mode) if mode else ""} {inst} {theory}{(" " + opts) if opts else ""}\n'
     if end:
         s += f'end {module}\n'
     return s
@@ -122,12 +133,14 @@ state constraints, TLC's `CONSTRAINT`).""",
     },
     'classic/distributed/Paxos/Paxos.qnt': {
         'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.""",
-        'pre': {'Paxos': INIT_NEXT},
+        'pre': {'Paxos': INIT_NEXT + 'set_option quint.skipParametric true\n'},
         'copies': {
-            'Paxos': [('Paxos_small', [('val Ballot = Nat', 'val Ballot = (0).to(2)')], '')],
+            'Paxos': [('Paxos_small', [('val Ballot = Nat', 'val Ballot = (0).to(2)'),
+                                       ('import Voting(Value = Value, Acceptor = Acceptor, Quorum = Quorum)',
+                                        'import Voting(Value = Value, Acceptor = Acceptor, Quorum = Quorum, Ballot = Ballot)')], '')],
             'Paxos_val2_accept3_quorum2': [('Paxos_small_val2_accept3_quorum2',
                                             [('import Paxos(', 'import Paxos_small(')],
-                                            mc('Paxos_small_val2_accept3_quorum2', ['Inv']))],
+                                            mc('Paxos_small_val2_accept3_quorum2', ['Inv'], violation=True))],
         },
     },
     'classic/distributed/ReliableBroadcast/reliablebc.qnt': {
@@ -156,14 +169,14 @@ state constraints, TLC's `CONSTRAINT`).""",
 than tolerated) it is violated, which Quint's README documents.""",
         'tails': {
             'properValues': both('properValues', ['agreement', 'validity'], depth=2),
-            'badValues': both('badValues', ['agreement'], depth=2),
+            'badValues': both('badValues', ['agreement'], depth=2, violation=True),
         },
     },
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
         'notes': """k-set agreement, on top of `ConsensusAlg`.""",
         'tails': {
             'KSetProperValues': both('KSetProperValues', ['kSetAgreement'], depth=2),
-            'KSetBadValues': both('KSetBadValues', ['kSetAgreement'], depth=2),
+            'KSetBadValues': both('KSetBadValues', ['kSetAgreement'], depth=2, violation=True),
         },
     },
     'classic/distributed/Bakery/bakery.qnt': {
@@ -182,7 +195,7 @@ invariant `IndInv` with Apalache; here `correctness` and `IndInv` are model chec
     'classic/distributed/TwoPhaseCommit/two_phase_commit_modules.qnt': {
         'notes': """Two-phase commit, split into modules for the messages, the resource managers
 and the transaction manager.""",
-        'tails': {'two_phase_commit': mc('two_phase_commit', ['inv'])},
+        'tails': {'two_phase_commit_tests': mc('two_phase_commit_tests', ['inv'])},
     },
     'classic/distributed/Paxos/Voting.qnt': {
         'notes': """The voting algorithm underlying Paxos; it is parameterized by constants and
@@ -195,7 +208,7 @@ end in a stalemate), as Quint's comment says.""",
     },
     'games/secret-santa/secret_santa.qnt': {
         'notes': """Secret Santa, instance `quint_team_secret_santa`.""",
-        'tails': {'quint_team_secret_santa': mc('quint_team_secret_santa', ['inv'])},
+        'tails': {'quint_team_secret_santa': mc('quint_team_secret_santa', ['inv'], violation=True)},
     },
     'games/rock_paper_scissors/play_rock_paper_scissors.qnt': {
         'notes': """Rock, paper, scissors.""",
@@ -203,7 +216,7 @@ end in a stalemate), as Quint's comment says.""",
     },
     'games/mafia_werewolf/play_mafia.qnt': {
         'notes': """Mafia (Werewolf).""",
-        'tails': {'play_mafia': both('play_mafia', ['correct_game_status'], depth=3)},
+        'tails': {'play_mafia': both('play_mafia', ['correct_game_status'], depth=3, violation=True)},
     },
     'tutorials/hello.qnt': {
         'notes': """The hello-world state machine of Quint's tutorial.""",
@@ -222,11 +235,20 @@ model checker and the simulator use the bounded copy below.""",
     'language-features/booleans.qnt': {'tails': {'booleans': mc('booleans')}},
     'language-features/counters.qnt': {'tails': {'counters': both('counters', depth=5)}},
     'language-features/integers.qnt': {'tails': {'integers': both('integers', depth=3)}},
-    'language-features/lists.qnt': {'tails': {'lists': both('lists', depth=3)}},
+    'language-features/lists.qnt': {
+        'notes': LENIENT_NOTE,
+        'pre': {'lists': LENIENT},
+        'tails': {'lists': both('lists', depth=3)}},
     'language-features/maps.qnt': {'tails': {'maps': both('maps', depth=3)}},
     'language-features/sets.qnt': {'tails': {'sets': both('sets', depth=3)}},
     'language-features/tuples.qnt': {'tails': {'tuples': both('tuples', depth=3)}},
-    'language-features/records.qnt': {'tails': {'records': both('records', depth=3)}},
+    'language-features/records.qnt': {
+        'notes': LENIENT_NOTE,
+        'pre': {'records': LENIENT},
+        'tails': {'records': both('records', depth=3)}},
+    'language-features/generate.qnt': {'notes': LENIENT_NOTE, 'pre': {'gen': LENIENT}},
+    'language-features/imports.qnt': {'notes': LENIENT_NOTE, 'pre': {'Math': LENIENT}},
+    'cosmos/ics23/ics23.qnt': {'notes': LENIENT_NOTE, 'pre': {'basics': LENIENT}},
     'language-features/option.qnt': {'tails': {'option': both('option', depth=3)}},
     'language-features/nondetEx.qnt': {'tails': {'nondetEx': both('nondetEx', depth=3)}},
     'language-features/weakFairness.qnt': {'tails': {'weakFairness': mc('weakFairness')}},

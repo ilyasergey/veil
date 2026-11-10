@@ -159,6 +159,8 @@ module KSetBadValues {
 
 quint_invariant kSetAgreement
 #gen_spec
+set_option veil.violationIsError false in
 #model_check interpreted { } { } (maxDepth := 2)
+set_option veil.violationIsError false in
 #simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end KSetBadValues

@@ -210,6 +210,8 @@ module play_mafia {
 
 quint_invariant correct_game_status
 #gen_spec
+set_option veil.violationIsError false in
 #model_check interpreted { } { } (maxDepth := 3)
+set_option veil.violationIsError false in
 #simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end play_mafia

@@ -33,8 +33,12 @@ def declNames (decls : Array Syntax) : Std.HashSet String :=
     alts.foldl (fun acc dcl =>
       if dcl.isOfKind ``quintConst || dcl.isOfKind ``quintVar then acc.insert (qualIdParts dcl[1]).1
       else if dcl.isOfKind ``quintOper then acc.insert (parseOperDef dcl[0]).name
-      else if dcl.isOfKind ``quintTypeAlias || dcl.isOfKind ``quintTypeSum then
-        acc.insert (qualIdParts dcl[1][0]).1
+      else if dcl.isOfKind ``quintTypeAlias then acc.insert (qualIdParts dcl[1][0]).1
+      else if dcl.isOfKind ``quintTypeSum then
+        -- the type and its constructors
+        let sd := dcl[3]
+        let vs := #[sd[1]] ++ (sd[2].getArgs.map fun g => g[1])
+        vs.foldl (fun acc v => acc.insert (identStr v[0])) (acc.insert (qualIdParts dcl[1][0]).1)
       else acc) acc) {}
 
 /-- Rename top-level names `x` to `I::x` (for `import M as I`). -/
@@ -88,7 +92,8 @@ partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandEla
       match pfx? with
       | some p =>
         let names := declNames (inner.map (·.decl))
-        out := out ++ inner.map fun it => { it with decl := renameNames names p it.decl, pfx? := some p }
+        out := out ++ inner.map fun it =>
+          { it with decl := renameNames names p it.decl, pfx? := it.pfx?.orElse fun _ => some p }
       | none => out := out ++ inner
     else if dcl.isOfKind ``quintInstance then
       -- `import M(c = e, ...).*` or `... as I`
@@ -104,7 +109,8 @@ partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandEla
         let names := declNames (inner.map (·.decl))
         -- the substituted expressions refer to the importing module: do not rename them
         out := out ++ inner.map fun it =>
-          { it with decl := renameNames names p it.decl, subst := it.subst.union subst, pfx? := some p }
+          { it with decl := renameNames names p it.decl, subst := it.subst.union subst,
+                    pfx? := it.pfx?.orElse fun _ => some p }
       | none => out := out ++ inner.map fun it => { it with subst := it.subst.union subst }
     else if dcl.isOfKind ``quintExport then
       continue
@@ -115,6 +121,8 @@ partial def expandImports (decls : Array Syntax) (depth : Nat := 0) : CommandEla
 /-! ## Collecting declarations -/
 
 structure TypeDecl where
+  /-- the prefix of the `import ... as I` that brought the type in, if any -/
+  pfx? : Option String := none
   name : String
   params : Array String
   /-- `none` for a sum type -/
@@ -150,11 +158,16 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
   let mut c : Collected := { mod := { name := modName } }
   for it in items do
     let dcl := pickTypeDecl it.decl
+    -- the name of a declaration of an `import M(...) as I` instance, without the `I::` prefix
+    let unpfx (n : String) : String :=
+      match it.pfx? with
+      | some p => if n.startsWith (p ++ "::") then (n.drop (p.length + 2)).toString else n
+      | none => n
     if dcl.isOfKind ``quintConst then
       let (n, _) := qualIdParts dcl[1]
-      if let some e := it.subst[n]? then
-        -- `c = c`: the importing module defines `c`
-        let same := match asQualId? e with
+      if let some e := it.subst[unpfx n]? then
+        -- `c = c` without a prefix: the importing module defines `c`
+        let same := it.pfx?.isNone && match asQualId? e with
           | some q => (qualIdParts q).1 == n
           | none => false
         unless same do
@@ -183,19 +196,27 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
       let params := if head[1].getNumArgs > 0 then
           (head[1][1].getSepArgs.map identStr) else #[]
       if dcl.isOfKind ``quintTypeAlias then
-        let td : TypeDecl := { name := n, params, aliasTy := Option.some (dcl[3]), variants := #[], ref := dcl }
+        let td : TypeDecl := { name := n, params, aliasTy := Option.some (dcl[3]), variants := #[],
+                               ref := dcl, pfx? := it.pfx? }
         c := { c with typeDecls := c.typeDecls.push td }
       else
         let sd := dcl[3]
         let vs := #[sd[1]] ++ (sd[2].getArgs.map fun g => g[1])
         let variants := vs.map fun v =>
           (identStr v[0], if v[1].getNumArgs > 0 then some v[1][1] else none)
-        c := { c with typeDecls := c.typeDecls.push { name := n, params, aliasTy := none, variants, ref := dcl } }
+        let td : TypeDecl := { name := n, params, aliasTy := none, variants, ref := dcl, pfx? := it.pfx? }
+        c := { c with typeDecls := c.typeDecls.push td }
       c := { c with mod := { c.mod with types := c.mod.types.insert n (Name.mkSimple (typeLeanStr n)),
                                         typeParams := c.mod.typeParams.insert n params } }
     else if dcl.isOfKind ``quintOper then
       let qd := parseOperDef dcl[0]
       if c.mod.defs.contains qd.name then continue
+      -- an instance may also replace a parameterless `val` (an extension of Quint, used to
+      -- bound sets like `val Ballot = Nat` in copies for model checking)
+      let qd := match it.subst[unpfx qd.name]? with
+        | some e => if (qd.params.getD #[]).isEmpty && (qd.kind == .val || qd.kind == .pureVal) then
+            { qd with body := e } else qd
+        | none => qd
       c := { c with mod := { c.mod with defs := c.mod.defs.insert qd.name qd },
                     defOrder := c.defOrder.push qd.name }
     else if dcl.isOfKind ``quintValDestr then
@@ -208,7 +229,13 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
     if td.aliasTy.isNone then
       let tn := Name.mkSimple (typeLeanStr td.name)
       for (v, arg?) in td.variants do
-        ctors := ctors.insert v { typeName := tn, ctorName := tn ++ Name.mkSimple v, hasArg := arg?.isSome }
+        let info : SumInfo := { typeName := tn, ctorName := tn ++ Name.mkSimple v, hasArg := arg?.isSome }
+        match td.pfx? with
+        | some p =>
+          -- `I::C`, as the renamed references in the imported module write it
+          ctors := ctors.insert (p ++ "::" ++ v) info
+          unless ctors.contains v do ctors := ctors.insert v info
+        | none => ctors := ctors.insert v info
   c := { c with mod := { c.mod with ctors := ctors } }
   return c
 
@@ -281,7 +308,8 @@ partial def looksBoolean (mod : ModInfo) (stx : Syntax) : Bool :=
       let m := fs.getLast?.getD n
       ["forall", "exists", "contains", "in", "subseteq", "not", "and", "or", "iff", "implies",
        "isFinite", "eq", "neq", "assert"].contains m ||
-      (fs.isEmpty && ((mod.defs[n]?.map fun dcl => dcl.retType?.any isBoolType).getD false))
+      (fs.isEmpty && ((mod.defs[n]?.map fun dcl =>
+        dcl.retType?.any isBoolType || looksBoolean mod dcl.body).getD false))
     | none =>
       match dot? s[0] with
       | some (_, f) =>
@@ -400,8 +428,27 @@ def elabTypeDecl (mod : ModInfo) (td : TypeDecl) : CommandElabM Unit := withRef 
           | $cid:ident => true
           | _ => false))
 
+/-- Elaborate a generated command. With `quint.lenient`, errors become a warning that the
+declaration is skipped. -/
+def elabGenerated (what : String) (cmd : Syntax) : CommandElabM Bool := do
+  unless quint.lenient.get (← getOptions) do
+    elabCommand cmd
+    return true
+  let saved := (← get).messages
+  modify fun st => { st with messages := {} }
+  elabCommand cmd
+  let msgs := (← get).messages
+  if msgs.hasErrors then
+    let errs ← msgs.toList.filter (·.severity == .error) |>.mapM (·.toString)
+    modify fun st => { st with messages := saved }
+    logWarning m!"{what} is skipped (quint.lenient): {errs.headD ""}"
+    return false
+  else
+    modify fun st => { st with messages := saved ++ msgs }
+    return true
+
 /-- Elaborate a pure definition as a Lean `def`. -/
-def elabPureDef (mod : ModInfo) (qd : QDef) : CommandElabM Unit := withRef qd.ref do
+def elabPureDef (mod : ModInfo) (qd : QDef) : CommandElabM Bool := withRef qd.ref do
   let name := mkId qd.name
   let ps := qd.params.getD #[]
   let tyVars : Std.HashSet String := ps.foldl (fun acc p =>
@@ -427,11 +474,11 @@ def elabPureDef (mod : ModInfo) (qd : QDef) : CommandElabM Unit := withRef qd.re
     | some t => some <$> runTr mod (trType t) tyVars
     | none => pure none
   match retTy? with
-  | some rt => elabCommand (← `(@[reducible] def $name $binders* : $rt := $body))
-  | none => elabCommand (← `(@[reducible] def $name $binders* := $body))
+  | some rt => elabGenerated s!"definition `{qd.name}`" (← `(@[reducible] def $name $binders* : $rt := $body))
+  | none => elabGenerated s!"definition `{qd.name}`" (← `(@[reducible] def $name $binders* := $body))
 
 /-- Elaborate a definition that reads the state or the constants as a Veil ghost definition. -/
-def elabGhostDef (mod : ModInfo) (qd : QDef) (isRel : Bool) : CommandElabM Unit := withRef qd.ref do
+def elabGhostDef (mod : ModInfo) (qd : QDef) (isRel : Bool) : CommandElabM Bool := withRef qd.ref do
   let name := mkId qd.name
   let ps := qd.params.getD #[]
   let mut binders : Array (TSyntax ``Lean.explicitBinders) := #[]
@@ -449,12 +496,12 @@ def elabGhostDef (mod : ModInfo) (qd : QDef) (isRel : Bool) : CommandElabM Unit 
     if bs.isEmpty then pure none else some <$> `(Lean.explicitBinders| $bs*)
   let _ := binders
   if isRel then
-    elabCommand (← `(command| ghost relation $name $[$bindersOpt]? := $body))
+    elabGenerated s!"definition `{qd.name}`" (← `(command| ghost relation $name $[$bindersOpt]? := $body))
   else
     let retTy? ← match qd.retType? with
       | some t => some <$> runTr mod (trType t)
       | none => pure none
-    elabCommand (← `(command| ghost function $name $[$bindersOpt]? $[: $retTy?]? := $body))
+    elabGenerated s!"definition `{qd.name}`" (← `(command| ghost function $name $[$bindersOpt]? $[: $retTy?]? := $body))
 
 /-- Register global copies of the scoped instances that `@[veil_decl]` derives. -/
 def globalizeInstances (structName : Name) (nParams : Nat) : CommandElabM Unit := do
@@ -534,6 +581,9 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
   let mut mod := c.mod
   -- a module whose constants are not all instantiated and that has no state is a library
   -- that is only used through `import`
+  if !mod.consts.isEmpty && quint.skipParametric.get (← getOptions) then
+    logInfo m!"Quint module `{modStr}` has constants; with `quint.skipParametric` it is elaborated only where it is imported."
+    return
   if mod.vars.isEmpty && !mod.consts.isEmpty then
     logInfo m!"Quint module `{modStr}` has constants and no state; it is elaborated where it is imported."
     return
@@ -589,7 +639,8 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       mod := { mod with defRepr := mod.defRepr.insert n (.named (mkId n)) }
   -- pure definitions; a definition that fails to elaborate is inlined instead
   for qd in pureDefs do
-    try elabPureDef mod qd
+    try
+      unless ← elabPureDef mod qd do mod := { mod with defRepr := mod.defRepr.erase qd.name }
     catch ex =>
       logWarning m!"`{qd.name}` is inlined: {ex.toMessageData}"
       mod := { mod with defRepr := mod.defRepr.erase qd.name }
@@ -627,7 +678,8 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
   elabCommand (← `(command| #gen_state))
   -- ghost definitions
   for (qd, isRel) in ghostDefs do
-    try elabGhostDef mod qd isRel
+    try
+      unless ← elabGhostDef mod qd isRel do mod := { mod with defRepr := mod.defRepr.erase qd.name }
     catch ex =>
       logWarning m!"`{qd.name}` is inlined: {ex.toMessageData}"
       mod := { mod with defRepr := mod.defRepr.erase qd.name }
@@ -643,8 +695,13 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
     catch ex => logWarning m!"assumption `{n}` is skipped: {ex.toMessageData}"
   -- initial states and transitions
   if let some initDef := (mod.defs[initName]?).filter (·.params.all (·.isEmpty)) then
-    let body ← runTr mod (trTopAction initDef.body)
-    withRef initDef.ref <| elabCommand (← `(command| after_init { $body }))
+    try
+      let body ← runTr mod (trTopAction initDef.body)
+      discard <| withRef initDef.ref <| elabGenerated "the initial action" (← `(command| after_init { $body }))
+    catch ex =>
+      if quint.lenient.get (← getOptions) then
+        logWarning m!"the initial action is skipped (quint.lenient): {ex.toMessageData}"
+      else throw ex
   if let some stepDef := (mod.defs[stepName]?).filter (·.params.all (·.isEmpty)) then
     let branches := splitBranches mod stepDef.body
     let mut used : Std.HashMap String Nat := {}
@@ -655,10 +712,15 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       let cnt := used.getD base 0
       used := used.insert base (cnt + 1)
       let nm := if cnt == 0 then base else s!"{base}_{cnt + 1}"
-      let body ← runTr mod (trTopBranch b)
-      let cmd ← `(command| action $(mkId nm) { $body })
-      trace[veil.debug] m!"Quint action: {cmd}"
-      withRef stepDef.ref <| elabCommand cmd
+      try
+        let body ← runTr mod (trTopBranch b)
+        let cmd ← `(command| action $(mkId nm) { $body })
+        trace[veil.debug] m!"Quint action: {cmd}"
+        discard <| withRef stepDef.ref <| elabGenerated s!"action `{nm}`" cmd
+      catch ex =>
+        if quint.lenient.get (← getOptions) then
+          logWarning m!"action `{nm}` is skipped (quint.lenient): {ex.toMessageData}"
+        else throw ex
   -- candidate invariants
   let mut cands : Std.HashMap (Name × String) Syntax := quintInvCandidateExt.getState (← getEnv)
   for qd in mod.defs.values do
