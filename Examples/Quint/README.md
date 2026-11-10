@@ -164,8 +164,8 @@ five seconds.
 
 ![TLC vs. Veil on Quint's finite examples](benchmark.png)
 
-Time to check each finite instance completely (MacBook, 18 cores; the minimum of three TLC runs
-and one Veil run per thread count):
+Time to check each finite instance completely (MacBook, 18 cores; the minimum of three runs of
+each):
 
 - **TLC**: the time `quint verify --backend tlc` reports for the check. It includes starting
   TLC's JVM, but not quint's translation of the spec to TLA+ through Apalache (about 3.3 s more
@@ -176,23 +176,23 @@ and one Veil run per thread count):
 
 | Instance | States | TLC (ms) | Veil, 1 thread (ms) | Veil, 8 threads (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| `two_phase_commit_3` | 288 | 277 | 22 | 20 |
-| `teaching` | 7,216,823 | 10,654 | 11,369 | 8,935 |
-| `mutex` | 8 | 249 | 21 | 19 |
-| `ewd840_3` | 302 | 276 | 22 | 19 |
-| `ewd426` | 117,649 | 477 | 821 | 741 |
-| `ewd426_3` | 729 | 269 | 37 | 22 |
-| `ewd426_4` | 1,024 | 287 | 48 | 41 |
-| `DiningPhilosophers5` | 352 | 278 | 22 | 21 |
-| `reliablebc` | 111 | 266 | 22 | 25 |
-| `two_layered_cache` | 98,287 | 672 | 386 | 193 |
-| `river` | 20 | 243 | 22 | 20 |
-| `prisoners3` | 70 | 233 | 21 | 19 |
-| `tictactoe` | 871 | 403 | 26 | 21 |
+| `two_phase_commit_3` | 288 | 277 | 19 | 18 |
+| `teaching` | 7,216,823 | 10,884 | 11,661 | 8,980 |
+| `mutex` | 8 | 257 | 17 | 19 |
+| `ewd840_3` | 302 | 270 | 18 | 18 |
+| `ewd426` | 117,649 | 491 | 789 | 741 |
+| `ewd426_3` | 729 | 284 | 20 | 19 |
+| `ewd426_4` | 1,024 | 292 | 43 | 42 |
+| `DiningPhilosophers5` | 352 | 280 | 18 | 18 |
+| `reliablebc` | 111 | 268 | 18 | 18 |
+| `two_layered_cache` | 98,287 | 676 | 393 | 191 |
+| `river` | 20 | 248 | 17 | 18 |
+| `prisoners3` | 70 | 251 | 17 | 17 |
+| `tictactoe` | 871 | 404 | 22 | 20 |
 
 On small state spaces Veil's native checker answers in about 20 ms, where TLC needs about
 250 ms, mostly JVM start-up. On the large ones both explore millions of states per second:
-`teaching` (7.2 million states) takes 10.7 s with TLC and 11.4 s (one thread) or 8.9 s (eight
+`teaching` (7.2 million states) takes 10.9 s with TLC and 11.7 s (one thread) or 9.0 s (eight
 threads) with Veil; `two_layered_cache` is faster in Veil, `ewd426` in TLC.
 
 Reproduce with [scripts/bench-model-check.py](../../scripts/bench-model-check.py) on copies of
