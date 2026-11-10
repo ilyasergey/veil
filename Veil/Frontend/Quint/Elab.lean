@@ -955,8 +955,12 @@ partial def isAction (mod : ModInfo) (locals : Std.HashSet String) (stx : Syntax
           | none => n == "assert")
         || (sepArgs stx[2]).any (isAction mod locals)
       else
-        fields.getLast! == "then" || fields.getLast! == "reps"
-    | none => false
+        fields.getLast! == "then" || fields.getLast! == "reps" ||
+          (mod.defs[fields.getLast!]?.map (·.kind == .action)).getD false
+    | none =>
+      match dot? stx[0] with
+      | some (_, f) => (mod.defs[f]?.map (·.kind == .action)).getD false
+      | none => false
   else
   match stx with
   | `(quint_expr| $_ = $_) => true
@@ -1037,7 +1041,21 @@ partial def trAction (stx : Syntax) : TrM DoItems := withRef stx do
           if dd.kind == .action then
             let args ← (sepArgs stx[2]).mapM trExpr
             return ← inlineAction dd args
-    | none => pure ()
+      else
+        -- `r.f.A(args)`: the action `A` with the receiver as its first argument
+        if let some dd := ctx.mod.defs[fields.getLast!]? then
+          if dd.kind == .action then
+            let mut recv ← trBaseName q n
+            for f in fields.dropLast do recv ← trField recv f q
+            let args ← (sepArgs stx[2]).mapM trExpr
+            return ← inlineAction dd (#[recv] ++ args)
+    | none =>
+      if let some (e, f) := dot? stx[0] then
+        if let some dd := ctx.mod.defs[f]? then
+          if dd.kind == .action then
+            let recv ← trExpr e
+            let args ← (sepArgs stx[2]).mapM trExpr
+            return ← inlineAction dd (#[recv] ++ args)
     throwErrorAt stx "unsupported action"
   match stx with
   | `(quint_expr| $lhs = $rhs) =>

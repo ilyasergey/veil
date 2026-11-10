@@ -123,7 +123,12 @@ state constraints, TLC's `CONSTRAINT`).""",
     'classic/distributed/Paxos/Paxos.qnt': {
         'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.""",
         'pre': {'Paxos': INIT_NEXT},
-        'tails': {'Paxos_val2_accept3_quorum2': both('Paxos_val2_accept3_quorum2', ['Inv'], depth=4)},
+        'copies': {
+            'Paxos': [('Paxos_small', [('val Ballot = Nat', 'val Ballot = (0).to(2)')], '')],
+            'Paxos_val2_accept3_quorum2': [('Paxos_small_val2_accept3_quorum2',
+                                            [('import Paxos(', 'import Paxos_small(')],
+                                            mc('Paxos_small_val2_accept3_quorum2', ['Inv']))],
+        },
     },
     'classic/distributed/ReliableBroadcast/reliablebc.qnt': {
         'notes': """Folklore reliable broadcast.""",
@@ -168,7 +173,11 @@ invariant `IndInv` with Apalache; here `correctness` and `IndInv` are model chec
     },
     'classic/distributed/ClockSync/clockSync6.qnt': {
         'notes': """Clock synchronization, instance `clock_sync4`, invariant `skew_inv`.""",
-        'tails': {'clock_sync4': both('clock_sync4', ['skew_inv'], depth=3)},
+        'copies': {
+            'clock_sync': [('clock_sync_small', [('nondet delta = oneOf(Int)', 'nondet delta = oneOf((0).to(2))')], '')],
+            'clock_sync4': [('clock_sync4_small', [('import clock_sync(', 'import clock_sync_small(')],
+                             both('clock_sync4_small', ['skew_inv'], depth=4))],
+        },
     },
     'classic/distributed/TwoPhaseCommit/two_phase_commit_modules.qnt': {
         'notes': """Two-phase commit, split into modules for the messages, the resource managers
