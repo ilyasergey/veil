@@ -440,3 +440,7 @@ module bankTests {
       )
     )
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test bankTests

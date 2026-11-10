@@ -159,6 +159,13 @@ def generate(quint: str, only=None):
                 + '`scripts/quint2veil.py` does this rewrite.\n\n'
                 + notes.strip() + '\n-/\n\n')
             footer = cfg.get('footer', '')
+            # `quint test`: the modules that define runs named `...Test`
+            tested = [name for name, chunk in chunks
+                      if re.search(r'^\s*run\s+[A-Za-z0-9_]*Test\b', chunk, re.M)]
+            if tested and not cfg.get('no_tests'):
+                footer = (footer.rstrip() + '\n\n' if footer else '') + \
+                    '/-! ## Tests (`quint test`) -/\n\n' + '\n'.join(f'#quint_test {m}' for m in tested) + '\n'
+
             out_path = os.path.join(OUT, lean_rel(rel))
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w') as fh:

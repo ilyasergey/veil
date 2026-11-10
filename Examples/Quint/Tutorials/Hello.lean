@@ -62,3 +62,7 @@ module hello {
 #gen_spec
 #quint_verify interpreted { } { }
 end hello
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test hello

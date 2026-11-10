@@ -9,8 +9,8 @@
 | `quint verify --max-steps=k` (Apalache, bounded) | `quint_bmc k inv` (Veil's symbolic BMC, SMT) when the state is SMT-friendly (integers, booleans, sum types, records; no sets or maps), otherwise `#quint_verify { } { } (maxDepth := k)` |
 | `quint verify --inductive-invariant=I` (Apalache) | `quint_invariant` of the conjuncts and `#check_invariants` (SMT), or `quint_grind` for every VC (`macro_rules \| \`(tactic\| veil_solve) => \`(tactic\| quint_grind)` and `set_option veil.solver "custom" in #check_invariants`) |
 | `quint run --max-samples=n --max-steps=k` | `#quint_run { } { } (numTraces := n) (maxSteps := k) (seed := s)` |
-| `quint verify --temporal=p --backend tlc` | a Veil `temporal` property and `#temporal_check` |
-| `quint test` | pure `run`s become `#guard` checks automatically; runs with actions: see frontend.md |
+| `quint verify --temporal=p --backend tlc` | `#quint_temporal [p] { } { }` (Lasso, `#temporal_check`); the frontend translates the module's `temporal` definitions |
+| `quint test` | `#quint_test M` after the module (every execution of each `...Test` run); pure `run`s also become `#guard` checks |
 | a property expected to fail | `set_option veil.violationIsError false in` before the check |
 
 `#quint_verify` and `#quint_run` take exactly the arguments of `#model_check` and `#simulate`,

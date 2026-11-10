@@ -4,6 +4,7 @@ public import Veil
 public import Veil.Frontend.Quint.Prelude
 public meta import Veil.Frontend.Quint.Prelude
 public meta import Veil.Frontend.Quint.Module
+public meta import Veil.Frontend.Quint.Test
 public import Veil.Frontend.Quint.Tactic
 
 /-!

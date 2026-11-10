@@ -281,3 +281,8 @@ module properChannelsTests {
     possibleChannelTopologies = myChains.setOfMaps(myChains.setOfMaps(myChannelNames)).filter(channelNamesUniquePerChain)
   ).*
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test denomTraceTest
+#quint_test denomTraceSimulation

@@ -418,3 +418,7 @@ quint_invariant balancesRangeInv, totalSupplyDoesNotOverflowInv
 #quint_verify interpreted { } { } (maxDepth := 3)
 #quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end coin_small
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test coin

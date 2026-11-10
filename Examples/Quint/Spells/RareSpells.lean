@@ -122,3 +122,7 @@ module rareSpells {
       assert(toSet(List()) == Set())
   }
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test rareSpells

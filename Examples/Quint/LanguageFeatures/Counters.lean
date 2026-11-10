@@ -110,3 +110,7 @@ module counters {
 #quint_verify interpreted { } { } (maxDepth := 5)
 #quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end counters
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test counters

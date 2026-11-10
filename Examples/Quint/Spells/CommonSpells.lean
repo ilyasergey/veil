@@ -86,3 +86,7 @@ module commonSpells {
     assert(Map("a" -> 1, "b" -> 1, "c" -> 1).mapToSet().fold(0, (__acc, __kv) => __acc + __kv._2) == 3),
   }
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test commonSpells

@@ -28,3 +28,7 @@ module importFrom {
   action init = true
   action step = true
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test importFrom

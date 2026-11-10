@@ -54,8 +54,8 @@ range, `chooseSome` of `Set()`) return the type's `default` in Veil.
 | Construct | Status | Workaround |
 | --- | --- | --- |
 | Uninterpreted `type T` | not supported | instantiate it, e.g. `type T = str` |
-| `run` with actions (`init.then(A).expect(P)`) | not executed | state the run as a `sat trace`, or check `P` as an invariant of a test module |
-| `temporal` definitions | not translated | write the property in Veil's `temporal` syntax and use `#temporal_check` |
+| `run` with actions (`init.then(A).expect(P)`) | `#quint_test M`; not for runs that start with `nondet`, or over huge ranges | sample with `#quint_run` instead |
+| `temporal` definitions | translated (`always`, `eventually`, `leadsTo`, fairness, set quantifiers) | `orKeep`, `next` and fairness of actions with parameters are not; write those in Veil's `temporal` syntax |
 | `Nat`, `Int` as values | only in `forall`/`exists`/`in`/`oneOf` | bound them, e.g. `(0).to(N)` |
 | Huge nondeterministic ranges (`0.to(MAX_UINT).oneOf()`) | enumerated in full | model check a copy with a small range, or use `#simulate` |
 | Polymorphic sum types (`Option[a]`) | supported for elaboration; instances limited | instantiate with concrete types |

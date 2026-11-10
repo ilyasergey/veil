@@ -16,7 +16,7 @@ k-set agreement, on top of `ConsensusAlg` (imported from its Lean file). The fil
 elaborates, but no Veil check runs on it: the initial action picks the processes' proposals from
 `Procs.setOfMaps(...)`, millions of maps for the eight processes of its instances, which Veil's
 simulator and model checker enumerate (Quint's simulator samples one instead). `ConsensusAlg.lean`
-checks the same algorithm on a smaller instance.
+checks the same algorithm on a smaller instance. For the same reason its tests are not run.
 -/
 
 

@@ -176,3 +176,7 @@ quint_invariant consistencyInv
 #gen_spec
 #quint_verify interpreted { } { }
 end two_phase_commit_3
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test two_phase_commit_3

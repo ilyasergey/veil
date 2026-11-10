@@ -344,3 +344,8 @@ quint_invariant agreement
 set_option veil.violationIsError false in
 #quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end badValues
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test properValues
+#quint_test badValues

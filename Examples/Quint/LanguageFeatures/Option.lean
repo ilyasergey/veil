@@ -86,3 +86,7 @@ module option {
 #quint_verify interpreted { } { } (maxDepth := 3)
 #quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end option
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test option

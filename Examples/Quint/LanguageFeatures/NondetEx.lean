@@ -69,3 +69,7 @@ quint_invariant mirrorInv
 #quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 quint_bmc 3 mirrorInv
 end nondetEx
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test nondetEx

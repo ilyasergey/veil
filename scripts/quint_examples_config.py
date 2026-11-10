@@ -208,7 +208,8 @@ checked by random simulation.""",
 elaborates, but no Veil check runs on it: the initial action picks the processes' proposals from
 `Procs.setOfMaps(...)`, millions of maps for the eight processes of its instances, which Veil's
 simulator and model checker enumerate (Quint's simulator samples one instead). `ConsensusAlg.lean`
-checks the same algorithm on a smaller instance.""",
+checks the same algorithm on a smaller instance. For the same reason its tests are not run.""",
+        'no_tests': True,
     },
     'classic/distributed/Bakery/bakery.qnt': {
         'notes': """Lamport's bakery algorithm, instance `verification`. Quint checks the inductive
@@ -308,3 +309,11 @@ disjunction, `(◇ □ (Enabled a_1 ∨ …)) → □ ◇ (⟨ a_1 ⟩ ∨ …)`
 names; it elaborates into a namespace with its definitions.""",
     },
 }
+
+# Tests whose actions range over huge integer domains (e.g. `0.to(MAX_UINT)`), which Veil's
+# model checker enumerates (quint test samples one execution): `#quint_test` does not finish on
+# them, so it is not run.
+for _p in ['cosmos/bank/bankTest.qnt', 'cosmos/ics20/ics20.qnt', 'solidity/ERC20/erc20.qnt',
+           'solidity/icse23-fig7/lottery.qnt', 'solidity/SimpleAuction/SimpleAuction.qnt',
+           'solidity/SimplePonzi/simplePonzi.qnt', 'solidity/GradualPonzi/gradualPonzi.qnt']:
+    CONFIG.setdefault(_p, {})['no_tests'] = True
