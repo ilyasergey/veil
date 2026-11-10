@@ -66,6 +66,7 @@ Other examples in [Examples/](Examples/) are organised as follows:
 | --- | --- |
 | [TLA/](Examples/TLA/) | Translations and adaptations of TLA+ specifications. |
 | [Ivy/](Examples/Ivy/) | Ivy-style first-order protocol models. |
+| [Quint/](Examples/Quint/) | Quint's examples, written in Quint and checked by Veil's Quint frontend. |
 | [Synchronous/](Examples/Synchronous/) | Synchronous consensus protocols with crash faults. |
 | [Simulate/](Examples/Simulate/) | Simulation testing examples using `#simulate`. |
 | [Puzzles/](Examples/Puzzles/) | State-machine models of recreational puzzles. |
@@ -171,6 +172,9 @@ skills directory.
 - [tla-to-veil](.agents/skills/tla-to-veil/SKILL.md): translating TLA+
   specifications into Veil, reviewing such translations, and checking them
   against TLC.
+- [quint-to-veil](.agents/skills/quint-to-veil/SKILL.md): bringing Quint
+  specifications into Veil with its Quint frontend, choosing the Veil checks
+  that correspond to Quint's, and validating them against the quint tool.
 
 ## Benchmarking
 

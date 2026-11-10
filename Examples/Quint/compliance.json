@@ -1,0 +1,322 @@
+{
+ "two_phase_commit_3": {
+  "quint_file": "classic/distributed/TwoPhaseCommit/two_phase_commit.qnt",
+  "main": "two_phase_commit_3",
+  "invariants": "consistencyInv",
+  "tlc": {
+   "distinct": 288,
+   "verdict": "holds",
+   "time_ms": 335,
+   "wall_s": 4.05
+  },
+  "veil": {
+   "distinct": 288,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "teaching": {
+  "quint_file": "classic/distributed/TeachingConcurrency/teaching.qnt",
+  "main": "",
+  "invariants": "correctness",
+  "tlc": {
+   "distinct": 7216823,
+   "verdict": "holds",
+   "time_ms": 12004,
+   "wall_s": 15.33
+  },
+  "veil": {
+   "distinct": 7216823,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "mutex": {
+  "quint_file": "classic/distributed/TeachingConcurrency/mutex.qnt",
+  "main": "",
+  "invariants": "correctness,inv",
+  "tlc": {
+   "distinct": 8,
+   "verdict": "holds",
+   "time_ms": 256,
+   "wall_s": 3.52
+  },
+  "veil": {
+   "distinct": 8,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "ewd840_3": {
+  "quint_file": "classic/distributed/ewd840/ewd840.qnt",
+  "main": "ewd840_3",
+  "invariants": "TypeOK,Inv,TerminationDetection",
+  "tlc": {
+   "distinct": 302,
+   "verdict": "holds",
+   "time_ms": 278,
+   "wall_s": 3.56
+  },
+  "veil": {
+   "distinct": 302,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "ewd426": {
+  "quint_file": "classic/distributed/ewd426/ewd426.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 117649,
+   "verdict": "holds",
+   "time_ms": 497,
+   "wall_s": 3.71
+  },
+  "veil": {
+   "distinct": 117649,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "ewd426_3": {
+  "quint_file": "classic/distributed/ewd426/ewd426_3.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 729,
+   "verdict": "holds",
+   "time_ms": 300,
+   "wall_s": 3.56
+  },
+  "veil": {
+   "distinct": 729,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "ewd426_4": {
+  "quint_file": "classic/distributed/ewd426/ewd426_4.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 1024,
+   "verdict": "holds",
+   "time_ms": 313,
+   "wall_s": 3.62
+  },
+  "veil": {
+   "distinct": 1024,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "DiningPhilosophers5": {
+  "quint_file": "classic/distributed/DiningPhilosophers/DiningPhilosophers5.qnt",
+  "main": "",
+  "invariants": "TypeOk,Safety",
+  "tlc": {
+   "distinct": 352,
+   "verdict": "holds",
+   "time_ms": 287,
+   "wall_s": 3.59
+  },
+  "veil": {
+   "distinct": 352,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "reliablebc": {
+  "quint_file": "classic/distributed/ReliableBroadcast/reliablebc.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 111,
+   "verdict": "holds",
+   "time_ms": 286,
+   "wall_s": 3.67
+  },
+  "veil": {
+   "distinct": 111,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "two_layered_cache": {
+  "quint_file": "classic/distributed/TwoLayeredCache/two_layered_cache.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 98287,
+   "verdict": "holds",
+   "time_ms": 694,
+   "wall_s": 3.97
+  },
+  "veil": {
+   "distinct": 98287,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "BinSearch10": {
+  "quint_file": "classic/sequential/BinSearch/BinSearch.qnt",
+  "main": "BinSearch10",
+  "invariants": "",
+  "tlc": {
+   "distinct": 5,
+   "verdict": "holds",
+   "time_ms": 264,
+   "wall_s": 3.49
+  },
+  "veil": {
+   "distinct": 5,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "river": {
+  "quint_file": "puzzles/river/river.qnt",
+  "main": "",
+  "invariants": "safety",
+  "tlc": {
+   "distinct": 20,
+   "verdict": "holds",
+   "time_ms": 265,
+   "wall_s": 3.46
+  },
+  "veil": {
+   "distinct": 20,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "prisoners3": {
+  "quint_file": "puzzles/prisoners/prisoners.qnt",
+  "main": "prisoners3",
+  "invariants": "safetyInv,countInv",
+  "tlc": {
+   "distinct": 70,
+   "verdict": "holds",
+   "time_ms": 260,
+   "wall_s": 3.49
+  },
+  "veil": {
+   "distinct": 70,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "tictactoe": {
+  "quint_file": "games/tictactoe/tictactoe.qnt",
+  "main": "",
+  "invariants": "inv",
+  "tlc": {
+   "distinct": 871,
+   "verdict": "holds",
+   "time_ms": 467,
+   "wall_s": 3.84
+  },
+  "veil": {
+   "distinct": 871,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "secret_santa": {
+  "quint_file": "games/secret-santa/secret_santa.qnt",
+  "main": "quint_team_secret_santa",
+  "invariants": "inv",
+  "tlc": {
+   "distinct": null,
+   "verdict": "violated",
+   "time_ms": 297,
+   "wall_s": 3.8
+  },
+  "veil": {
+   "distinct": null,
+   "verdict": "violated"
+  },
+  "agree": true
+ },
+ "rock_paper_scissors": {
+  "quint_file": "games/rock_paper_scissors/play_rock_paper_scissors.qnt",
+  "main": "",
+  "invariants": "winInv",
+  "tlc": {
+   "distinct": 19,
+   "verdict": "holds",
+   "time_ms": 250,
+   "wall_s": 3.52
+  },
+  "veil": {
+   "distinct": 19,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "hello": {
+  "quint_file": "tutorials/hello.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 3,
+   "verdict": "holds",
+   "time_ms": 249,
+   "wall_s": 3.43
+  },
+  "veil": {
+   "distinct": 3,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "booleans": {
+  "quint_file": "language-features/booleans.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 2,
+   "verdict": "holds",
+   "time_ms": 245,
+   "wall_s": 3.43
+  },
+  "veil": {
+   "distinct": 2,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "weakFairness": {
+  "quint_file": "language-features/weakFairness.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 2,
+   "verdict": "holds",
+   "time_ms": 255,
+   "wall_s": 3.42
+  },
+  "veil": {
+   "distinct": 2,
+   "verdict": "holds"
+  },
+  "agree": true
+ },
+ "strongFairness": {
+  "quint_file": "language-features/strongFairness.qnt",
+  "main": "",
+  "invariants": "",
+  "tlc": {
+   "distinct": 4,
+   "verdict": "holds",
+   "time_ms": 249,
+   "wall_s": 3.47
+  },
+  "veil": {
+   "distinct": 4,
+   "verdict": "holds"
+  },
+  "agree": true
+ }
+}

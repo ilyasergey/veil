@@ -155,9 +155,26 @@ INDEX_TABLE
 
 ## Regenerating and rechecking
 
+Get Quint's examples:
+
 ```bash
 git clone https://github.com/quint-co/quint /tmp/quint
-python3 scripts/quint_examples.py /tmp/quint          # regenerate Examples/Quint
-scripts/quint_build_all.sh                            # elaborate and check everything
-python3 scripts/quint_compliance.py /tmp/quint        # compare with quint verify --backend tlc
+```
+
+Regenerate the Lean files of this folder from them:
+
+```bash
+python3 scripts/quint_examples.py /tmp/quint
+```
+
+Elaborate every file, which runs all the Veil checks:
+
+```bash
+scripts/quint_build_all.sh
+```
+
+Compare the results with `quint verify --backend tlc` (needs the quint CLI and Java 21):
+
+```bash
+python3 scripts/quint_compliance.py /tmp/quint
 ```

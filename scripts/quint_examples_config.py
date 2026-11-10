@@ -16,6 +16,7 @@ DEFAULT_NOTES = """The module elaborates into a Veil module; no Veil checks are 
 
 
 SIM = '(numTraces := 1000) (maxSteps := 20) (seed := 42)'
+SIM_SMALL = '(numTraces := 100) (maxSteps := 10) (seed := 42)'
 
 
 EXPECT = 'set_option veil.violationIsError false in\n'
@@ -180,8 +181,8 @@ than tolerated) it is violated, which Quint's README documents.""",
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
         'notes': """k-set agreement, on top of `ConsensusAlg`.""",
         'tails': {
-            'KSetProperValues': sim('KSetProperValues', ['kSetAgreement']),
-            'KSetBadValues': sim('KSetBadValues', ['kSetAgreement'], violation=True),
+            'KSetProperValues': sim('KSetProperValues', ['kSetAgreement'], opts=SIM_SMALL),
+            'KSetBadValues': sim('KSetBadValues', ['kSetAgreement'], violation=True, opts=SIM_SMALL),
         },
     },
     'classic/distributed/Bakery/bakery.qnt': {

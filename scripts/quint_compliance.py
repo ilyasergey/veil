@@ -64,7 +64,7 @@ CHECKS = [
     ('strongFairness', 'language-features/strongFairness.qnt', '', '', '', 'LanguageFeatures/StrongFairness.lean'),
 ]
 
-TLC_DISTINCT = re.compile(r'(\d+) distinct states found')
+TLC_DISTINCT = re.compile(r'([\d,]+) distinct states found')
 TLC_MS = re.compile(r'\((\d+)ms\)')
 VEIL_OK = re.compile(r'No violation \(explored (\d+) states\)')
 VEIL_BAD = re.compile(r'Violation: (\w+)')
@@ -93,7 +93,8 @@ def run_tlc(quint, qdir, f, main, inv, extra, timeout=600):
         args.append('--invariant=' + inv)
     args += extra.split() + [os.path.join(quint, 'examples', f)]
     out, wall = run_group(args, qdir, os.environ.copy(), timeout)
-    m = TLC_DISTINCT.search(out)
+    # the last count is the final one (TLC also prints progress lines)
+    found = TLC_DISTINCT.findall(out)
     ms = TLC_MS.findall(out)
     if 'TIMEOUT' in out:
         verdict = 'timeout'
@@ -103,7 +104,8 @@ def run_tlc(quint, qdir, f, main, inv, extra, timeout=600):
         verdict = 'violated'
     else:
         verdict = 'error'
-    return {'distinct': int(m.group(1)) if m and verdict == 'holds' else None, 'verdict': verdict,
+    distinct = int(found[-1].replace(',', '')) if found else None
+    return {'distinct': distinct if verdict == 'holds' else None, 'verdict': verdict,
             'time_ms': int(ms[-1]) if ms else None, 'wall_s': round(wall, 2)}
 
 

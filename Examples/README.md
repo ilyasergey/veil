@@ -30,6 +30,13 @@ Translations of [TLA+](https://github.com/tlaplus/Examples) specifications into
 Veil. These use a wider range of Veil features including concrete types,
 structures, and lists.
 
+### [Quint/](Quint/)
+
+All of [Quint](https://github.com/quint-co/quint)'s examples, written in Quint and elaborated by
+Veil's Quint frontend (`public import Veil.Quint`), with Veil checks that correspond to Quint's
+(TLC, Apalache, simulator) and agree with them on reachable-state counts. Includes a proof of
+two-phase commit for every set of resource managers. See its [README](Quint/README.md).
+
 ### [Synchronous/](Synchronous/)
 
 Synchronous consensus protocols that operate in time-bounded rounds with
