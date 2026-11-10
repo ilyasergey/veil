@@ -12,7 +12,11 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-k-set agreement, on top of `ConsensusAlg`.
+k-set agreement, on top of `ConsensusAlg` (imported from its Lean file). The file
+elaborates, but no Veil check runs on it: the initial action picks the processes' proposals from
+`Procs.setOfMaps(...)`, millions of maps for the eight processes of its instances, which Veil's
+simulator and model checker enumerate (Quint's simulator samples one instead). `ConsensusAlg.lean`
+checks the same algorithm on a smaller instance.
 -/
 
 
@@ -51,12 +55,6 @@ module KSetProperValues {
     .expect(kSetAgreement)
     .expect(validity)
 }
-
-quint_invariant kSetAgreement
-#gen_spec
-#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
-end KSetProperValues
-
 module KSetBadValues {
   -- quint run KSetAgreementConsensus.qnt --main KSetBadValues --invariant kSetAgreement --max-steps 8
   -- The command above should fail, but it might take a few minutes (and extra samples) to find a violation
@@ -156,9 +154,3 @@ module KSetBadValues {
       -- values are allowed.
       .expect(not(kSetAgreement))
 }
-
-quint_invariant kSetAgreement
-#gen_spec
-set_option veil.violationIsError false in
-#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
-end KSetBadValues

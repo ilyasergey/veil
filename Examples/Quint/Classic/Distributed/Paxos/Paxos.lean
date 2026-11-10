@@ -13,6 +13,12 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `scripts/quint2veil.py` does this rewrite.
 
 Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.
+Quint's own tools do not check this example (Apalache: quint issue #1284). `Ballot = Nat` makes
+the state space infinite, so the checks run on a copy with three ballots. `import Voting(...) as V`
+adds Voting's variables `V::votes` and `V::maxBal`, which no action of Paxos assigns; `Inv`
+refers to them through `V::Inv`, so it fails in the initial state (where `V::maxBal` is the empty
+map). Quint would report the missing assignment instead. The violation is therefore expected and
+reported as information.
 -/
 
 set_option quint.init "Init"

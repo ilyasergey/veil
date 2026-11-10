@@ -138,7 +138,13 @@ state constraints, TLC's `CONSTRAINT`).""",
                                             extra='quint_constraint ClockConstraint, BoundedNetwork\n')},
     },
     'classic/distributed/Paxos/Paxos.qnt': {
-        'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.""",
+        'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.
+Quint's own tools do not check this example (Apalache: quint issue #1284). `Ballot = Nat` makes
+the state space infinite, so the checks run on a copy with three ballots. `import Voting(...) as V`
+adds Voting's variables `V::votes` and `V::maxBal`, which no action of Paxos assigns; `Inv`
+refers to them through `V::Inv`, so it fails in the initial state (where `V::maxBal` is the empty
+map). Quint would report the missing assignment instead. The violation is therefore expected and
+reported as information.""",
         'pre': {'Paxos': INIT_NEXT + 'set_option quint.skipParametric true\n'},
         'copies': {
             'Paxos': [('Paxos_small', [('val Ballot = Nat', 'val Ballot = (0).to(2)'),
@@ -172,18 +178,20 @@ state constraints, TLC's `CONSTRAINT`).""",
     'classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt': {
         'notes': """A synchronous consensus algorithm with crash faults. With proper values
 (`properValues`: at most `MAX_FAULTS` crashes) `agreement` holds; with `badValues` (more crashes
-than tolerated) it is violated, which Quint's README documents.""",
+than tolerated) it is violated, which Quint's comments document. The initial states alone number
+7^5 (every process proposes one of seven values), so, as with `quint run`, the instances are
+checked by random simulation.""",
         'tails': {
             'properValues': sim('properValues', ['agreement', 'validity']),
             'badValues': sim('badValues', ['agreement'], violation=True),
         },
     },
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
-        'notes': """k-set agreement, on top of `ConsensusAlg`.""",
-        'tails': {
-            'KSetProperValues': sim('KSetProperValues', ['kSetAgreement'], opts=SIM_SMALL),
-            'KSetBadValues': sim('KSetBadValues', ['kSetAgreement'], violation=True, opts=SIM_SMALL),
-        },
+        'notes': """k-set agreement, on top of `ConsensusAlg` (imported from its Lean file). The file
+elaborates, but no Veil check runs on it: the initial action picks the processes' proposals from
+`Procs.setOfMaps(...)`, millions of maps for the eight processes of its instances, which Veil's
+simulator and model checker enumerate (Quint's simulator samples one instead). `ConsensusAlg.lean`
+checks the same algorithm on a smaller instance.""",
     },
     'classic/distributed/Bakery/bakery.qnt': {
         'notes': """Lamport's bakery algorithm, instance `verification`. Quint checks the inductive
