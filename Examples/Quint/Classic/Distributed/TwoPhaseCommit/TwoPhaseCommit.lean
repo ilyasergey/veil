@@ -174,5 +174,5 @@ module two_phase_commit_3 {
 
 quint_invariant consistencyInv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end two_phase_commit_3

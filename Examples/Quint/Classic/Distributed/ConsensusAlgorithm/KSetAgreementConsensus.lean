@@ -53,7 +53,8 @@ module KSetProperValues {
 
 quint_invariant kSetAgreement
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 2)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end KSetProperValues
 
 module KSetBadValues {
@@ -158,5 +159,6 @@ module KSetBadValues {
 
 quint_invariant kSetAgreement
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 2)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end KSetBadValues

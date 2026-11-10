@@ -178,7 +178,7 @@ module two_phase_commit {
 
 quint_invariant inv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end two_phase_commit
 
 module two_phase_commit_tests {

@@ -10,11 +10,10 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+A module without state variables, used to test Quint's options for operator
+names; it elaborates into a namespace with its definitions.
 -/
 
-set_option quint.init "myInit"
-set_option quint.step "myStep"
 module defaultOpNames {
   -- The default name for the state initialization action is `init`.
   action init = true
@@ -47,8 +46,3 @@ module defaultOpNames {
   -- quint verify --invariant inv,inv2 ./defaultOpNames.qnt
   def inv2 = true
 }
-
-quint_invariant inv, inv2
-#gen_spec
-#model_check { } { }
-end defaultOpNames

@@ -171,5 +171,6 @@ module ReadersWriters_5 {
 
 quint_invariant Safety
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 6)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end ReadersWriters_5

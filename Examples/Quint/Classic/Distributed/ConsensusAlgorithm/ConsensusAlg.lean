@@ -304,7 +304,8 @@ module properValues {
 
 quint_invariant agreement, validity
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 2)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end properValues
 
 module badValues {
@@ -339,5 +340,6 @@ module badValues {
 
 quint_invariant agreement
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 2)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end badValues

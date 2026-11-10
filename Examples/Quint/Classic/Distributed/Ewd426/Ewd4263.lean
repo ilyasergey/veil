@@ -115,5 +115,5 @@ module ewd426_3 {
 }
 
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end ewd426_3

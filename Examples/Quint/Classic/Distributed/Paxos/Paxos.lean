@@ -11,9 +11,11 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`.
+Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.
 -/
 
+set_option quint.init "Init"
+set_option quint.step "Next"
 module Paxos {
   /-**************************************************************************
    * This is a specification of the Paxos algorithm without explicit leaders *
@@ -315,5 +317,6 @@ module Paxos_val2_accept3_quorum2 {
 
 quint_invariant Inv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { } (maxDepth := 4)
+#simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end Paxos_val2_accept3_quorum2

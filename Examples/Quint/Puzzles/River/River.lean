@@ -131,5 +131,5 @@ module river {
 
 quint_invariant safety
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end river

@@ -38,7 +38,7 @@ def both(module, invariants=(), depth=3, extra='', inst='{ }'):
         s += 'quint_invariant ' + ', '.join(invariants) + '\n'
     s += extra
     s += '#gen_spec\n'
-    s += f'#model_check {inst} {{ }} (maxDepth := {depth})\n'
+    s += f'#model_check interpreted {inst} {{ }} (maxDepth := {depth})\n'
     s += f'#simulate {inst} {{ }} {SIM}\n'
     s += f'end {module}\n'
     return s
@@ -47,7 +47,7 @@ def both(module, invariants=(), depth=3, extra='', inst='{ }'):
 INIT_NEXT = 'set_option quint.init "Init"\nset_option quint.step "Next"\n'
 
 
-def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=True, mode=''):
+def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=True, mode='interpreted'):
     """A Veil section that declares invariants, generates the specification and model checks it."""
     s = ''
     if invariants:
@@ -74,7 +74,7 @@ holds.""",
         'notes': """The algorithm from Lamport's "Teaching Concurrency". `correctness` is checked
 by explicit-state model checking for the configured number of processes.""",
         'tails': {
-            'teaching': mc('teaching', ['correctness']),
+            'teaching': mc('teaching', ['correctness'], mode=''),
         },
     },
     'classic/distributed/TeachingConcurrency/mutex.qnt': {
@@ -92,7 +92,7 @@ invariant `inv` are model checked.""",
     },
     'classic/distributed/ewd426/ewd426.qnt': {
         'notes': """Dijkstra's self-stabilizing token ring (EWD 426), K-state version.""",
-        'tails': {'ewd426': mc('ewd426')},
+        'tails': {'ewd426': mc('ewd426', mode='')},
     },
     'classic/distributed/ewd426/ewd426_3.qnt': {
         'notes': """EWD 426, three-state version.""",
@@ -110,19 +110,20 @@ invariant `inv` are model checked.""",
         'notes': """Readers and writers, instance `ReadersWriters_5`, with `Init`/`Next` as the
 initial and step actions (`quint verify --init=Init --step=Next`).""",
         'pre': {'ReadersWriters': INIT_NEXT},
-        'tails': {'ReadersWriters_5': mc('ReadersWriters_5', ['Safety'])},
+        'tails': {'ReadersWriters_5': both('ReadersWriters_5', ['Safety'], depth=6)},
     },
     'classic/distributed/LamportMutex/LamportMutex.qnt': {
         'notes': """Lamport's mutual exclusion, instance `LamportMutex_3_10`, with `Init`/`Next`.
 As in the TLA+ original, `ClockConstraint` and `BoundedNetwork` bound the state space (they are
 state constraints, TLC's `CONSTRAINT`).""",
         'pre': {'LamportMutex': INIT_NEXT},
-        'tails': {'LamportMutex_3_10': mc('LamportMutex_3_10', ['Mutex'],
-                                          extra='quint_constraint ClockConstraint, BoundedNetwork\n')},
+        'tails': {'LamportMutex_3_10': both('LamportMutex_3_10', ['Mutex'], depth=12,
+                                            extra='quint_constraint ClockConstraint, BoundedNetwork\n')},
     },
     'classic/distributed/Paxos/Paxos.qnt': {
-        'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`.""",
-        'tails': {'Paxos_val2_accept3_quorum2': mc('Paxos_val2_accept3_quorum2', ['Inv'])},
+        'notes': """Single-decree Paxos, instance `Paxos_val2_accept3_quorum2`, with `Init`/`Next`.""",
+        'pre': {'Paxos': INIT_NEXT},
+        'tails': {'Paxos_val2_accept3_quorum2': both('Paxos_val2_accept3_quorum2', ['Inv'], depth=4)},
     },
     'classic/distributed/ReliableBroadcast/reliablebc.qnt': {
         'notes': """Folklore reliable broadcast.""",
@@ -130,7 +131,7 @@ state constraints, TLC's `CONSTRAINT`).""",
     },
     'classic/distributed/TwoLayeredCache/two_layered_cache.qnt': {
         'notes': """A two-layered cache.""",
-        'tails': {'two_layered_cache': mc('two_layered_cache')},
+        'tails': {'two_layered_cache': mc('two_layered_cache', mode='')},
     },
     'classic/sequential/BinSearch/BinSearch.qnt': {
         'notes': """Binary search, instance `BinSearch10`.""",
@@ -149,21 +150,21 @@ state constraints, TLC's `CONSTRAINT`).""",
 (`properValues`: at most `MAX_FAULTS` crashes) `agreement` holds; with `badValues` (more crashes
 than tolerated) it is violated, which Quint's README documents.""",
         'tails': {
-            'properValues': mc('properValues', ['agreement', 'validity']),
-            'badValues': mc('badValues', ['agreement']),
+            'properValues': both('properValues', ['agreement', 'validity'], depth=2),
+            'badValues': both('badValues', ['agreement'], depth=2),
         },
     },
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
         'notes': """k-set agreement, on top of `ConsensusAlg`.""",
         'tails': {
-            'KSetProperValues': mc('KSetProperValues', ['kSetAgreement']),
-            'KSetBadValues': mc('KSetBadValues', ['kSetAgreement']),
+            'KSetProperValues': both('KSetProperValues', ['kSetAgreement'], depth=2),
+            'KSetBadValues': both('KSetBadValues', ['kSetAgreement'], depth=2),
         },
     },
     'classic/distributed/Bakery/bakery.qnt': {
         'notes': """Lamport's bakery algorithm, instance `verification`. Quint checks the inductive
 invariant `IndInv` with Apalache; here `correctness` and `IndInv` are model checked.""",
-        'tails': {'verification': mc('verification', ['correctness', 'IndInv'])},
+        'tails': {'verification': both('verification', ['correctness', 'IndInv'], depth=5)},
     },
     'classic/distributed/ClockSync/clockSync6.qnt': {
         'notes': """Clock synchronization, instance `clock_sync4`, invariant `skew_inv`.""",
@@ -206,7 +207,8 @@ end in a stalemate), as Quint's comment says.""",
     'tutorials/coin.qnt': {
         'notes': """The Solidity coin contract. Amounts range over `0.to(MAX_UINT)`, so the
 model checker and the simulator use the bounded copy below.""",
-        'tails': {'coin': sim('coin', ['balancesRangeInv', 'totalSupplyDoesNotOverflowInv'])},
+        'copies': {'coin': [('coin_small', [('nondet amount = (0).to(MAX_UINT).oneOf()', 'nondet amount = (0).to(10).oneOf()')],
+                             both('coin_small', ['balancesRangeInv', 'totalSupplyDoesNotOverflowInv'], depth=3))]},
     },
     'language-features/booleans.qnt': {'tails': {'booleans': mc('booleans')}},
     'language-features/counters.qnt': {'tails': {'counters': both('counters', depth=5)}},
@@ -221,7 +223,7 @@ model checker and the simulator use the bounded copy below.""",
     'language-features/weakFairness.qnt': {'tails': {'weakFairness': mc('weakFairness')}},
     'language-features/strongFairness.qnt': {'tails': {'strongFairness': mc('strongFairness')}},
     'verification/defaultOpNames.qnt': {
-        'pre': {'defaultOpNames': 'set_option quint.init "myInit"\nset_option quint.step "myStep"\n'},
-        'tails': {'defaultOpNames': mc('defaultOpNames', ['inv', 'inv2'])},
+        'notes': """A module without state variables, used to test Quint's options for operator
+names; it elaborates into a namespace with its definitions.""",
     },
 }

@@ -29,9 +29,13 @@ structure Item where
 /-- Top-level names declared by a list of declarations. -/
 def declNames (decls : Array Syntax) : Std.HashSet String :=
   decls.foldl (fun acc dcl =>
-    if dcl.isOfKind ``quintConst || dcl.isOfKind ``quintVar then acc.insert (qualIdParts dcl[1]).1
-    else if dcl.isOfKind ``quintOper then acc.insert (parseOperDef dcl[0]).name
-    else acc) {}
+    let alts := if dcl.isOfKind choiceKind then dcl.getArgs else #[dcl]
+    alts.foldl (fun acc dcl =>
+      if dcl.isOfKind ``quintConst || dcl.isOfKind ``quintVar then acc.insert (qualIdParts dcl[1]).1
+      else if dcl.isOfKind ``quintOper then acc.insert (parseOperDef dcl[0]).name
+      else if dcl.isOfKind ``quintTypeAlias || dcl.isOfKind ``quintTypeSum then
+        acc.insert (qualIdParts dcl[1][0]).1
+      else acc) acc) {}
 
 /-- Rename top-level names `x` to `I::x` (for `import M as I`). -/
 partial def renameNames (names : Std.HashSet String) (pfx : String) (stx : Syntax) : Syntax :=
@@ -253,6 +257,19 @@ partial def dependsOnState (mod : ModInfo) (n : String) (visiting : Std.HashSet 
       (mod.vars.contains r || mod.consts.contains r) &&
         !(dcl.params.getD #[]).any (·.name == r)
       || (mod.defs.contains r && dependsOnState mod r (visiting.insert n))
+
+/-- A `run` that asserts facts without executing actions: no assignment, no action call and no
+`then`/`reps`/`expect`/`fail`. -/
+partial def isPureRun (mod : ModInfo) (stx : Syntax) : Bool :=
+  let refs := referencedNames stx
+  !refs.toList.any (fun r => ["then", "reps", "expect", "fail", "oneOf"].contains r ||
+      (mod.defs[r]?.map (·.kind == .action)).getD false || mod.vars.contains r) &&
+    !hasAssignment stx
+where
+  hasAssignment (s : Syntax) : Bool :=
+    match s with
+    | `(quint_expr| $_ = $_) => true
+    | _ => s.getArgs.any hasAssignment
 
 /-- A syntactic guess whether an expression is boolean. -/
 partial def looksBoolean (mod : ModInfo) (stx : Syntax) : Bool :=
@@ -576,6 +593,24 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
     catch ex =>
       logWarning m!"`{qd.name}` is inlined: {ex.toMessageData}"
       mod := { mod with defRepr := mod.defRepr.erase qd.name }
+  -- `run`s that only assert facts about pure definitions are `#guard` checks (`quint test`)
+  for n in order do
+    let some qd := mod.defs[n]? | continue
+    unless qd.kind == .run && (qd.params.getD #[]).isEmpty do continue
+    if !isPureRun mod qd.body || dependsOnState mod n then continue
+    try
+      let t ← runTr mod (trExpr qd.body)
+      -- a test that does not elaborate (e.g. `Map()` without a type) is reported, not an error
+      let saved := (← get).messages
+      modify fun st => { st with messages := {} }
+      withRef qd.ref <| elabCommand (← `(command| #guard (decide ($t) : Bool)))
+      let msgs := (← get).messages
+      if msgs.hasErrors then
+        modify fun st => { st with messages := saved }
+        logWarningAt qd.ref m!"test `{qd.name}` is not checked: it does not elaborate as a Lean term"
+      else
+        modify fun st => { st with messages := saved ++ msgs }
+    catch ex => logWarning m!"test `{qd.name}` is not checked: {ex.toMessageData}"
   if !isVeil then
     elabCommandString "end"
     elabCommand (← `(end $modId))

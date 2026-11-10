@@ -19,6 +19,12 @@ import quint2veil  # noqa: E402
 from quint_examples_config import CONFIG, DEFAULT_NOTES  # noqa: E402
 
 ROOT = os.path.dirname(HERE)
+
+COPY_NOTE = """/-! ### `{new}`: a copy of `{orig}` for checking
+
+The Veil checks below run on this copy, which differs from `{orig}` only by: {subs}.
+-/
+"""
 OUT = os.path.join(ROOT, 'Examples', 'Quint')
 
 
@@ -120,7 +126,15 @@ def generate(quint: str, only=None):
             tails = cfg.get('tails', {})
             pres = cfg.get('pre', {})
             body = prefix
+            copies = cfg.get('copies', {})
             for name, chunk in chunks:
+                for (new, subs, ctail) in copies.get(name, []):
+                    # a copy of the module with textual substitutions, e.g. smaller ranges
+                    c = re.sub(r'^module\s+' + re.escape(name) + r'\b', 'module ' + new, chunk, count=1)
+                    for a, b in subs:
+                        c = c.replace(a, b)
+                    c = insert_tail(c, ctail)
+                    chunk = chunk.rstrip() + '\n\n' + COPY_NOTE.format(orig=name, new=new, subs='; '.join(f'`{a}` → `{b}`' for a, b in subs)) + c
                 if name in tails:
                     chunk = insert_tail(chunk, tails[name])
                 if name in pres:

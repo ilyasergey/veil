@@ -107,6 +107,6 @@ module counters {
 }
 
 #gen_spec
-#model_check { } { } (maxDepth := 5)
+#model_check interpreted { } { } (maxDepth := 5)
 #simulate { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
 end counters

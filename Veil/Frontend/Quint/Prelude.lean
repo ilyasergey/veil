@@ -304,4 +304,32 @@ end List
 /-- `i^j`; Quint requires `j ≥ 0`. -/
 @[inline] def ipow (i j : Int) : Int := i ^ j.toNat
 
+/-! ## Lemmas for proofs about Quint specifications -/
+
+section Lemmas
+variable {α β : Type} [Ord α] [TransOrd α] [LawfulEqOrd α]
+
+@[simp] theorem Set.mem_ofList_iff [DecidableEq α] {l : _root_.List α} {x : α} :
+    x ∈ Quint.Set.ofList l ↔ x ∈ l := by
+  simp [Quint.Set.ofList]
+
+@[simp] theorem Map.get_set_eq [DecidableEq α] [Inhabited β] (m : Quint.Map α β) (k r : α) (v : β) :
+    Quint.Map.get (Quint.Map.set m k v) r = if k = r then v else Quint.Map.get m r := by
+  simp only [Quint.Map.get, Quint.Map.set, ExtTreeMap.getD_insert]
+  by_cases h : k = r <;> simp [h]
+
+@[simp] theorem Set.mem_tuples2_iff [DecidableEq α] [Ord β] [TransOrd β] [LawfulEqOrd β]
+    [DecidableEq β] (s : Quint.Set α) (t : Quint.Set β) (a : α) (b : β) :
+    (a, b) ∈ Quint.Set.tuples2 s t ↔ a ∈ s ∧ b ∈ t := by
+  simp [Quint.Set.tuples2]
+
+theorem Map.get_mapBy [Inhabited β] (s : Quint.Set α) (f : α → β) (x : α) (h : x ∈ s) :
+    Quint.Map.get (Quint.Map.mapBy s f) x = f x := by
+  simp only [Quint.Map.get, Quint.Map.mapBy]
+  apply ExtTreeMap.getD_ofList_of_mem (k := x) (by simp)
+  · simpa [_root_.List.pairwise_map] using (ExtTreeSet.distinct_toList (t := s))
+  · simp; exact ⟨x, h, rfl, rfl⟩
+
+end Lemmas
+
 end Quint

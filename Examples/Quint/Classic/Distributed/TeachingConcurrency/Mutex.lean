@@ -109,5 +109,5 @@ module mutex {
 
 quint_invariant correctness, inv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end mutex

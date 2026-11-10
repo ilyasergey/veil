@@ -150,5 +150,5 @@ module prisoners3 {
 
 quint_invariant safetyInv, countInv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end prisoners3

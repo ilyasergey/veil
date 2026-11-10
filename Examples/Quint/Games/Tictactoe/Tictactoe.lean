@@ -198,5 +198,5 @@ module tictactoe {
 
 quint_invariant inv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end tictactoe

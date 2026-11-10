@@ -33,5 +33,5 @@ module booleans {
 }
 
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end booleans

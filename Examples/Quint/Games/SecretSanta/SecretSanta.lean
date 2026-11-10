@@ -144,5 +144,5 @@ module quint_team_secret_santa {
 
 quint_invariant inv
 #gen_spec
-#model_check { } { }
+#model_check interpreted { } { }
 end quint_team_secret_santa
