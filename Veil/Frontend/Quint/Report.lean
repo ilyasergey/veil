@@ -147,6 +147,12 @@ def quintReport (vars : Array (String × String × Bool)) (msg : String) (ms : N
     let exec := if states.isEmpty then "" else renderStates vars states ++ "\n"
     return exec ++ s!"[violation] Found an issue ({ms}ms)." ++
       (if violates.isEmpty then "" else s!"\n  violates: {violates}")
+  -- `✅ No liveness violation (checked N properties, …)` from `#temporal_check`
+  if msg.contains '✅' && (msg.splitOn "No liveness violation").length > 1 then
+    let n := match msg.splitOn "checked " with
+      | _ :: rest :: _ => (rest.takeWhile Char.isDigit).toString
+      | _ => "?"
+    return s!"[ok] No violation found ({n} temporal properties, {ms}ms)."
   -- `✅ No violation (explored N states)` or `✅ No violation in N traces`
   match msg.splitOn "explored " with
   | _ :: rest :: _ =>
@@ -207,6 +213,22 @@ syntax (name := quintVerify) "#quint_verify " (modelCheckMode)? term:max (term:m
 `quint run` does. -/
 syntax (name := quintRun) "#quint_run " (modelCheckMode)? term:max (term:max)?
   Lean.Parser.Tactic.optConfig : command
+
+/-- `#quint_temporal [p_1] … [p_n]` takes the arguments of `#temporal_check`, runs it, and reports
+the result as `quint verify --temporal=p_1,…` (with the TLC backend) does. -/
+syntax (name := quintTemporal) "#quint_temporal " ("[" quint_ident "]")* (modelCheckMode)? term:max
+  (term:max)? Lean.Parser.Tactic.optConfig : command
+
+@[command_elab quintTemporal] def elabQuintTemporal : CommandElab := fun stx => do
+  -- property names may be Veil keywords (e.g. `safety`)
+  let names := stx[1].getArgs.map fun g =>
+    let n := identStr g[1]
+    Syntax.node .none ``Veil.propertyName
+      #[mkAtomFrom g "[", mkIdentFrom g[1] (Name.mkSimple (leanStr n)), mkAtomFrom g "]"]
+  let cmd := Syntax.node stx.getHeadInfo ``Veil.livenessCheck
+    #[mkAtomFrom stx[0] "#temporal_check ", mkNullNode names, stx[2], stx[3], stx[4], stx[5],
+      mkNullNode, mkNullNode]
+  elabWithQuintReport stx cmd none
 
 @[command_elab quintVerify] def elabQuintVerify : CommandElab := fun stx => do
   let cmd := Syntax.node stx.getHeadInfo ``Veil.modelCheck

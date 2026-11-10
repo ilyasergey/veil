@@ -10,7 +10,10 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Strong fairness. `weakFair(step, vars)` is fairness of the whole step, which
+the frontend splits into one Veil action per branch: it becomes weak fairness of their
+disjunction, `(◇ □ (Enabled a_1 ∨ …)) → □ ◇ (⟨ a_1 ⟩ ∨ …)`. As with TLC,
+`eventuallyHundredDegrees` holds and `eventuallyHundredDegreesWeakOnly` does not.
 -/
 
 module strongFairness {
@@ -48,4 +51,7 @@ module strongFairness {
 
 #gen_spec
 #quint_verify interpreted { } { }
+#quint_temporal [eventuallyHundredDegrees] interpreted { } { }
+set_option veil.violationIsError false in
+#quint_temporal [eventuallyHundredDegreesWeakOnly] interpreted { } { }
 end strongFairness

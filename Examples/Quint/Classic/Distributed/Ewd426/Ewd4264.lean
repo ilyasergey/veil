@@ -123,4 +123,5 @@ module ewd426_4 {
 
 #gen_spec
 #quint_verify interpreted { } { }
+#quint_temporal [convergence] [closure] [persistence] interpreted { } { }
 end ewd426_4

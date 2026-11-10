@@ -1,0 +1,114 @@
+{
+ "classic/distributed/DiningPhilosophers/DiningPhilosophers5.qnt::DeadlockProperty": {
+  "verdict": "violated",
+  "wall_s": 3.7
+ },
+ "classic/distributed/DiningPhilosophers/DiningPhilosophers5.qnt::DeadlockFreedom": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/distributed/DiningPhilosophers/DiningPhilosophers5.qnt::LivelockFreedom": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/distributed/TwoLayeredCache/two_layered_cache.qnt::agreement": {
+  "verdict": "error: error: TLC error (see output above)",
+  "wall_s": 3.6
+ },
+ "classic/distributed/ewd426/ewd426.qnt::convergence": {
+  "verdict": "holds",
+  "wall_s": 5.2
+ },
+ "classic/distributed/ewd426/ewd426.qnt::closure": {
+  "verdict": "holds",
+  "wall_s": 5.2
+ },
+ "classic/distributed/ewd426/ewd426.qnt::persistence": {
+  "verdict": "holds",
+  "wall_s": 4.8
+ },
+ "classic/distributed/ewd426/ewd426_3.qnt::convergence": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd426/ewd426_3.qnt::closure": {
+  "verdict": "holds",
+  "wall_s": 3.8
+ },
+ "classic/distributed/ewd426/ewd426_3.qnt::persistence": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd426/ewd426_4.qnt::convergence": {
+  "verdict": "holds",
+  "wall_s": 3.8
+ },
+ "classic/distributed/ewd426/ewd426_4.qnt::closure": {
+  "verdict": "holds",
+  "wall_s": 3.8
+ },
+ "classic/distributed/ewd426/ewd426_4.qnt::persistence": {
+  "verdict": "holds",
+  "wall_s": 3.8
+ },
+ "classic/distributed/ewd840/ewd840.qnt::NeverChangeColor": {
+  "verdict": "violated",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd840/ewd840.qnt::liveness": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd840/ewd840.qnt::falseLiveness": {
+  "verdict": "violated",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd840/ewd840.qnt::AllNodesTerminateIfNoMessages": {
+  "verdict": "violated",
+  "wall_s": 3.6
+ },
+ "classic/distributed/ewd840/ewd840.qnt::AllNodesTerminateIfNoMessagesFairSystem": {
+  "verdict": "violated",
+  "wall_s": 3.7
+ },
+ "classic/distributed/ewd840/ewd840.qnt::AllNodesTerminateIfNoMessagesFairStep": {
+  "verdict": "holds",
+  "wall_s": 3.7
+ },
+ "classic/sequential/BinSearch/BinSearch.qnt::Progress": {
+  "verdict": "error: error: TLC error (see output above)",
+  "wall_s": 3.6
+ },
+ "games/tictactoe/tictactoe.qnt::XMustEventuallyWin": {
+  "verdict": "violated",
+  "wall_s": 3.9
+ },
+ "puzzles/prisoners/prisoners.qnt::safety": {
+  "verdict": "holds",
+  "wall_s": 3.5
+ },
+ "puzzles/prisoners/prisoners.qnt::liveness": {
+  "verdict": "violated",
+  "wall_s": 3.5
+ },
+ "language-features/weakFairness.qnt::eventuallyDone": {
+  "verdict": "holds",
+  "wall_s": 3.4
+ },
+ "language-features/weakFairness.qnt::notDoneLeadsToDone": {
+  "verdict": "holds",
+  "wall_s": 3.5
+ },
+ "language-features/weakFairness.qnt::notDoneLeadsToDoneNoFairness": {
+  "verdict": "violated",
+  "wall_s": 3.5
+ },
+ "language-features/strongFairness.qnt::eventuallyHundredDegrees": {
+  "verdict": "holds",
+  "wall_s": 3.5
+ },
+ "language-features/strongFairness.qnt::eventuallyHundredDegreesWeakOnly": {
+  "verdict": "violated",
+  "wall_s": 3.5
+ }
+}

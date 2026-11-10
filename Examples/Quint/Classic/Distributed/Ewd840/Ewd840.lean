@@ -203,4 +203,7 @@ module ewd840_3 {
 quint_invariant TypeOK, Inv, TerminationDetection
 #gen_spec
 #quint_verify interpreted { } { }
+#quint_temporal [liveness] interpreted { } { }
+set_option veil.violationIsError false in
+#quint_temporal [falseLiveness] interpreted { } { }
 end ewd840_3

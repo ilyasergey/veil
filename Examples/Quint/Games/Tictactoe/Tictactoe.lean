@@ -199,4 +199,6 @@ module tictactoe {
 quint_invariant inv
 #gen_spec
 #quint_verify interpreted { } { }
+set_option veil.violationIsError false in
+#quint_temporal [XMustEventuallyWin] interpreted { } { }
 end tictactoe

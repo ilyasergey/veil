@@ -1334,6 +1334,8 @@ structure Branch where
   prefix_ : Array Syntax
   act : Syntax
   name : String
+  /-- the action definitions (without parameters) whose bodies the branch was split out of -/
+  owners : List String := []
 
 /-- Split an action into the branches of its top-level `any` (through `nondet` and `val`
 prefixes and through calls of action definitions without parameters). -/
@@ -1351,7 +1353,8 @@ partial def splitBranches (mod : ModInfo) (stx : Syntax) (prefix_ : Array Syntax
     | some dd =>
       if fs.isEmpty && dd.kind == .action && dd.params.all (·.isEmpty) && prefix_.isEmpty && depth ≤ 3 then
         let inner := splitBranches mod dd.body #[] (depth + 1)
-        if inner.size > 1 then inner else #[{ prefix_, act := s, name := n }]
+        if inner.size > 1 then inner.map fun b => { b with owners := n :: b.owners }
+        else #[{ prefix_, act := s, name := n }]
       else #[{ prefix_, act := s, name := n }]
     | none => #[{ prefix_, act := s, name := n }]
   | _ =>

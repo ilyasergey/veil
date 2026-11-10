@@ -169,4 +169,7 @@ module DiningPhilosophers5 {
 quint_invariant TypeOk, Safety
 #gen_spec
 #quint_verify interpreted { } { }
+#quint_temporal [DeadlockFreedom] [LivelockFreedom] interpreted { } { }
+set_option veil.violationIsError false in
+#quint_temporal [DeadlockProperty] interpreted { } { }
 end DiningPhilosophers5

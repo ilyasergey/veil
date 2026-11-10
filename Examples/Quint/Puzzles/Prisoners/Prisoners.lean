@@ -151,4 +151,7 @@ module prisoners3 {
 quint_invariant safetyInv, countInv
 #gen_spec
 #quint_verify interpreted { } { }
+#quint_temporal [safety] interpreted { } { }
+set_option veil.violationIsError false in
+#quint_temporal [liveness] interpreted { } { }
 end prisoners3

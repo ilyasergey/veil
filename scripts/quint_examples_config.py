@@ -58,6 +58,17 @@ it reports, and the gaps in `.agents/skills/quint-to-veil/references/frontend.md
 elaborated with `quint.lenient`, which skips the definitions and actions that do not elaborate
 and reports each of them as a warning."""
 
+def temporal(holds=(), violated=(), mode='interpreted', inst='{ }'):
+    """`#quint_temporal` checks of Quint's temporal properties (the frontend translates them);
+    `violated` ones are expected to fail, as with TLC."""
+    s = ''
+    if holds:
+        s += '#quint_temporal ' + ' '.join(f'[{p}]' for p in holds) + f' {mode} {inst} {{ }}\n'
+    for p in violated:
+        s += EXPECT + f'#quint_temporal [{p}] {mode} {inst} {{ }}\n'
+    return s
+
+
 INIT_NEXT = ""'set_option quint.init "Init"\nset_option quint.step "Next"\n'
 
 
@@ -104,24 +115,29 @@ invariant `inv` are model checked.""",
     'classic/distributed/ewd840/ewd840.qnt': {
         'notes': """Dijkstra's termination detection (EWD 840), instance `ewd840_3`.""",
         'tails': {
-            'ewd840_3': mc('ewd840_3', ['TypeOK', 'Inv', 'TerminationDetection']),
+            'ewd840_3': mc('ewd840_3', ['TypeOK', 'Inv', 'TerminationDetection'], end=False) + temporal(
+                ['liveness'], ['falseLiveness']) + 'end ewd840_3\n',
         },
     },
     'classic/distributed/ewd426/ewd426.qnt': {
         'notes': """Dijkstra's self-stabilizing token ring (EWD 426), K-state version.""",
-        'tails': {'ewd426': mc('ewd426', mode='')},
+        'tails': {'ewd426': mc('ewd426', mode='', end=False) + temporal(
+            ['convergence', 'closure', 'persistence'], mode='') + 'end ewd426\n'},
     },
     'classic/distributed/ewd426/ewd426_3.qnt': {
         'notes': """EWD 426, three-state version.""",
-        'tails': {'ewd426_3': mc('ewd426_3')},
+        'tails': {'ewd426_3': mc('ewd426_3', end=False) + temporal(
+            ['convergence', 'closure', 'persistence']) + 'end ewd426_3\n'},
     },
     'classic/distributed/ewd426/ewd426_4.qnt': {
         'notes': """EWD 426, four-state version.""",
-        'tails': {'ewd426_4': mc('ewd426_4')},
+        'tails': {'ewd426_4': mc('ewd426_4', end=False) + temporal(
+            ['convergence', 'closure', 'persistence']) + 'end ewd426_4\n'},
     },
     'classic/distributed/DiningPhilosophers/DiningPhilosophers5.qnt': {
         'notes': """Dining philosophers with five philosophers.""",
-        'tails': {'DiningPhilosophers5': mc('DiningPhilosophers5', ['TypeOk', 'Safety'])},
+        'tails': {'DiningPhilosophers5': mc('DiningPhilosophers5', ['TypeOk', 'Safety'], end=False) + temporal(
+            ['DeadlockFreedom', 'LivelockFreedom'], ['DeadlockProperty']) + 'end DiningPhilosophers5\n'},
     },
     'classic/distributed/ReadersWriters/ReadersWriters.qnt': {
         'notes': """Readers and writers, instance `ReadersWriters_5`, with `Init`/`Next` as the
@@ -173,7 +189,8 @@ reported as information.""",
     },
     'puzzles/prisoners/prisoners.qnt': {
         'notes': """The prisoners and the switch room, instance `prisoners3`.""",
-        'tails': {'prisoners3': mc('prisoners3', ['safetyInv', 'countInv'])},
+        'tails': {'prisoners3': mc('prisoners3', ['safetyInv', 'countInv'], end=False) + temporal(
+            ['safety'], ['liveness']) + 'end prisoners3\n'},
     },
     'classic/distributed/ConsensusAlgorithm/ConsensusAlg.qnt': {
         'notes': """A synchronous consensus algorithm with crash faults. With proper values
@@ -218,7 +235,8 @@ instantiated by `Paxos.qnt`.""",
     'games/tictactoe/tictactoe.qnt': {
         'notes': """Tic-tac-toe with a strategy for X. `NotStalemate` is violated (the game can
 end in a stalemate), as Quint's comment says.""",
-        'tails': {'tictactoe': mc('tictactoe', ['inv'])},
+        'tails': {'tictactoe': mc('tictactoe', ['inv'], end=False) + temporal(
+            violated=['XMustEventuallyWin']) + 'end tictactoe\n'},
     },
     'games/secret-santa/secret_santa.qnt': {
         'notes': """Secret Santa, instance `quint_team_secret_santa`.""",
@@ -272,21 +290,19 @@ up to three steps.""",
         'tails': {'nondetEx': both('nondetEx', ['mirrorInv'], depth=3, bmc=(3, ['mirrorInv']))}},
     'language-features/weakFairness.qnt': {
         'notes': """Weak fairness. Quint checks the temporal properties with TLC
-(`quint verify --backend tlc --temporal ...`); here `#temporal_check` (Lasso, Veil's verified LTL
-checker) checks the same formulas, written in Veil's temporal syntax: `weakFair(finish, vars)` is
-`𝒲ℱ finish`, `p leadsTo q` is `p ↝ q`. As with TLC, the property without fairness fails (the
-system may take `noop` forever).""",
-        'tails': {'weakFairness': '''temporal (only := check) [eventuallyDone] 𝒲ℱ finish → ◇ ⌜ done ⌝
-temporal (only := check) [notDoneLeadsToDone] 𝒲ℱ finish → (⌜ ¬ done ⌝ ↝ ⌜ done ⌝)
-temporal (only := check) [notDoneLeadsToDoneNoFairness] ⌜ ¬ done ⌝ ↝ ⌜ done ⌝
-#gen_spec
-#quint_verify interpreted { } { }
-#temporal_check [eventuallyDone] [notDoneLeadsToDone] interpreted { } { }
-set_option veil.violationIsError false in
-#temporal_check [notDoneLeadsToDoneNoFairness] interpreted { } { }
-end weakFairness
-'''}},
-    'language-features/strongFairness.qnt': {'tails': {'strongFairness': mc('strongFairness')}},
+(`quint verify --backend tlc --temporal ...`); the frontend translates them into Veil's temporal
+logic (`weakFair(finish, vars)` is `𝒲ℱ finish`, `p leadsTo q` is `p ↝ q`), and `#quint_temporal`
+checks them with Lasso, Veil's verified LTL model checker. As with TLC, the property without
+fairness fails (the system may take `noop` forever).""",
+        'tails': {'weakFairness': mc('weakFairness', end=False) + temporal(
+            ['eventuallyDone', 'notDoneLeadsToDone'], ['notDoneLeadsToDoneNoFairness']) + 'end weakFairness\n'}},
+    'language-features/strongFairness.qnt': {
+        'notes': """Strong fairness. `weakFair(step, vars)` is fairness of the whole step, which
+the frontend splits into one Veil action per branch: it becomes weak fairness of their
+disjunction, `(◇ □ (Enabled a_1 ∨ …)) → □ ◇ (⟨ a_1 ⟩ ∨ …)`. As with TLC,
+`eventuallyHundredDegrees` holds and `eventuallyHundredDegreesWeakOnly` does not.""",
+        'tails': {'strongFairness': mc('strongFairness', end=False) + temporal(
+            ['eventuallyHundredDegrees'], ['eventuallyHundredDegreesWeakOnly']) + 'end strongFairness\n'}},
     'verification/defaultOpNames.qnt': {
         'notes': """A module without state variables, used to test Quint's options for operator
 names; it elaborates into a namespace with its definitions.""",

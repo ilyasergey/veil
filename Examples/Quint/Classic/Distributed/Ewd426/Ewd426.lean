@@ -94,6 +94,7 @@ module ewd426 {
 
 #gen_spec
 #quint_verify { } { }
+#quint_temporal [convergence] [closure] [persistence]  { } { }
 end ewd426
 
 module broken_ewd426 {

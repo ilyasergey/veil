@@ -568,6 +568,119 @@ def ensureRecordGlobal (fields : Array String) : CommandElabM Unit := do
     for c in recordCommands name.getString! fields do elabCommandString c
   modifyEnv (quintRecordExt.addEntry · (key, name))
 
+/-! ## Temporal properties -/
+
+/-- Names of Quint's temporal operators. -/
+def temporalOps : List String :=
+  ["always", "eventually", "leadsTo", "weakFair", "strongFair", "enabled", "next", "orKeep",
+   "mustChange", "guarantees"]
+
+/-- `f(args)` or `r.f(args)` (the receiver first): the operator and its arguments. -/
+def callOf? (stx : Syntax) : Option (String × Array Syntax) :=
+  let s := unwrap stx
+  if !isApp s then none else
+  let args := sepArgs s[2]
+  match asQualId? s[0] with
+  | some q =>
+    let (n, fs) := qualIdParts q
+    match fs with
+    | [] => some (n, args)
+    | [m] => some (m, #[Syntax.node .none `Veil.Quint.quintName #[mkIdent (Name.mkSimple n)]] ++ args)
+    | _ => none
+  | none =>
+    match dot? s[0] with
+    | some (e, m) => some (m, #[e] ++ args)
+    | none => none
+
+/-- Whether an expression uses a temporal operator (or a temporal definition). -/
+partial def isTemporalExpr (mod : ModInfo) (stx : Syntax) : Bool :=
+  (stx.find? fun s => s.isAtom && s.getAtomVal.trimAscii.toString == "leadsTo").isSome ||
+  (referencedNames stx).toList.any fun r =>
+    temporalOps.contains r || (mod.defs[r]?.map (·.kind == .temporal)).getD false
+
+/-- Translate a Quint temporal formula into Lentil's `tlfml`, for `#temporal_check`.
+`weakFair(A, vars)` and `strongFair(A, vars)` refer to the Veil actions that implement the Quint
+action `A` (`actions`): one action gives `𝒲ℱ a`; several (e.g. `step`, which the frontend splits
+into one Veil action per branch) give fairness of their disjunction,
+`(◇ □ (Enabled a_1 ∨ …)) → □ ◇ (⟨ a_1 ⟩ ∨ …)` (strong: `□ ◇` instead of `◇ □`). -/
+partial def trTemporal (acts : Std.HashMap String (Array String)) (stx : Syntax) :
+    TrM (TSyntax `tlfml) := do
+  let mod := (← read).mod
+  let s := unwrap stx
+  let disj (fs : Array (TSyntax `tlfml)) : TrM (TSyntax `tlfml) := do
+    let mut r := fs.back!
+    for f in fs.pop.reverse do r ← `(tlfml| $f ∨ $r)
+    `(tlfml| ($r))
+  let actionsOf (a : Syntax) : TrM (Array Ident) := do
+    let uStx := unwrap a
+    let (n, fs) ← if uStx.getKind == `Veil.Quint.quintName then
+        pure (uStx[0].getId.toString (escape := false), ([] : List String))
+      else match asQualId? uStx with
+        | some q => pure (qualIdParts q)
+        | none => throwErrorAt a "fairness is supported for actions without arguments"
+    unless fs.isEmpty do throwErrorAt a "fairness is supported for actions without arguments"
+    let some vs := acts[n]? | throwErrorAt a "`{n}` is not an action of the transitions (`step`)"
+    return vs.map mkId
+  let fair (strong : Bool) (a : Syntax) : TrM (TSyntax `tlfml) := do
+    let vs ← actionsOf a
+    if h : vs.size = 1 then
+      if strong then `(tlfml| 𝒮ℱ $(vs[0])) else `(tlfml| 𝒲ℱ $(vs[0]))
+    else
+      let en ← disj (← vs.mapM fun a => `(tlfml| Enabled $a))
+      let tk ← disj (← vs.mapM fun a => `(tlfml| ⟨ $a ⟩))
+      if strong then `(tlfml| ((□ ◇ $en) → □ ◇ $tk)) else `(tlfml| ((◇ □ $en) → □ ◇ $tk))
+  if !isTemporalExpr mod s then
+    let t ← trExpr s
+    return ← `(tlfml| ⌜ $t ⌝)
+  if let some (op, args) := callOf? s then
+    match op, args with
+    | "always", #[p] => return ← `(tlfml| □ $(← trTemporal acts p))
+    | "eventually", #[p] => return ← `(tlfml| ◇ $(← trTemporal acts p))
+    | "weakFair", #[a, _] => return ← fair false a
+    | "strongFair", #[a, _] => return ← fair true a
+    | "enabled", #[a] => return ← disj (← (← actionsOf a).mapM fun a => `(tlfml| Enabled $a))
+    | "not", #[p] => return ← `(tlfml| ¬ $(← trTemporal acts p))
+    | "and", ps => return ← trConjT ps
+    | "or", ps =>
+      let fs ← ps.mapM (trTemporal acts)
+      return ← disj fs
+    | "implies", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) → $(← trTemporal acts q)))
+    | "iff", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) ↔ $(← trTemporal acts q)))
+    | "leadsTo", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) ↝ $(← trTemporal acts q)))
+    | "forall", #[set, f] | "exists", #[set, f] =>
+      -- a temporal formula for every (some) element of a set: `⋀ x ∈ S.toList, φ`
+      match lambda? f with
+      | some (#[p], false, body) =>
+        -- over the elements of the set, which the model checker enumerates; inside the body,
+        -- the element (of the subtype) is coerced to the element type where needed
+        let sT ← trExpr set
+        return ← bindLocal (paramName p) fun x => do
+          let b ← trTemporal acts body
+          if op == "forall" then `(tlfml| (∀ $x:ident : { y // y ∈ $sT }, $b))
+          else `(tlfml| (∃ $x:ident : { y // y ∈ $sT }, $b))
+      | _ => throwErrorAt s "a temporal quantifier needs a lambda"
+    | _, _ => pure ()
+  match s with
+  | `(quint_expr| $p and $q) => `(tlfml| ($(← trTemporal acts p) ∧ $(← trTemporal acts q)))
+  | `(quint_expr| $p or $q) => `(tlfml| ($(← trTemporal acts p) ∨ $(← trTemporal acts q)))
+  | `(quint_expr| $p implies $q) => `(tlfml| ($(← trTemporal acts p) → $(← trTemporal acts q)))
+  | `(quint_expr| $p iff $q) => `(tlfml| ($(← trTemporal acts p) ↔ $(← trTemporal acts q)))
+  | `(quint_expr| $p leadsTo $q) => `(tlfml| ($(← trTemporal acts p) ↝ $(← trTemporal acts q)))
+  | `(quint_expr| and { $es,* }) => trConjT (es.getElems.map (·.raw))
+  | `(quint_expr| $q:quintQualId) =>
+    let (n, fs) := qualIdParts q
+    match mod.defs[n]? with
+    | some td => if fs.isEmpty && td.kind == .temporal then trTemporal acts td.body
+                 else throwErrorAt s "unsupported temporal formula"
+    | none => throwErrorAt s "unsupported temporal formula"
+  | _ => throwErrorAt s "unsupported temporal formula"
+where
+  trConjT (ps : Array Syntax) : TrM (TSyntax `tlfml) := do
+    let fs ← ps.mapM (trTemporal acts)
+    let mut r := fs.back!
+    for f in fs.pop.reverse do r ← `(tlfml| $f ∧ $r)
+    `(tlfml| ($r))
+
 /-! ## The module command -/
 
 /-- The Veil module of the Quint module elaborated last, while it is open. -/
@@ -717,6 +830,8 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       if quint.lenient.get (← getOptions) then
         logWarning m!"the initial action is skipped (quint.lenient): {ex.toMessageData}"
       else throw ex
+  -- Quint action names to the Veil actions that implement them (for temporal properties)
+  let mut actionMap : Std.HashMap String (Array String) := {}
   if let some stepDef := (mod.defs[stepName]?).filter (·.params.all (·.isEmpty)) then
     let branches := splitBranches mod stepDef.body
     let mut used : Std.HashMap String Nat := {}
@@ -727,6 +842,8 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       let cnt := used.getD base 0
       used := used.insert base (cnt + 1)
       let nm := if cnt == 0 then base else s!"{base}_{cnt + 1}"
+      for o in stepName :: (if b.name.isEmpty then b.owners else b.name :: b.owners) do
+        actionMap := actionMap.insert o ((actionMap.getD o #[]).push nm)
       try
         let body ← runTr mod (trTopBranch b)
         let cmd ← `(command| action $(mkId nm) { $body })
@@ -736,6 +853,17 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
         if quint.lenient.get (← getOptions) then
           logWarning m!"action `{nm}` is skipped (quint.lenient): {ex.toMessageData}"
         else throw ex
+  -- temporal properties
+  for n in order do
+    let some qd := mod.defs[n]? | continue
+    unless qd.kind == .temporal && (qd.params.getD #[]).isEmpty do continue
+    try
+      let f ← runTr mod (trTemporal actionMap qd.body)
+      let nid := mkIdentFrom qd.ref (Name.mkSimple (leanStr qd.name))
+      let cmd ← `(command| temporal (only := $(mkIdent `check)) [$nid] $f)
+      discard <| withRef qd.ref <| elabGenerated s!"temporal property `{qd.name}`" cmd
+    catch ex =>
+      logWarningAt qd.ref m!"temporal property `{qd.name}` is not translated: {ex.toMessageData}"
   -- candidate invariants
   let mut cands : Std.HashMap (Name × String) Syntax := quintInvCandidateExt.getState (← getEnv)
   for qd in mod.defs.values do
