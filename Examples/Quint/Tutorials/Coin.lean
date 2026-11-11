@@ -422,3 +422,4 @@ end coin_small
 /-! ## Tests (`quint test`) -/
 
 #quint_test coin
+#quint_test coin_small

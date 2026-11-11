@@ -342,6 +342,85 @@ theorem Map.get_mapBy [Inhabited β] (s : Quint.Set α) (f : α → β) (x : α)
   · simpa [_root_.List.pairwise_map] using (ExtTreeSet.distinct_toList (t := s))
   · simp; exact ⟨x, h, rfl, rfl⟩
 
+@[simp] theorem Set.mem_filter_iff (s : Quint.Set α) (p : α → Bool) (x : α) :
+    x ∈ Quint.Set.filter s p ↔ x ∈ s ∧ p x = true := by
+  simp [Quint.Set.filter, ExtTreeSet.mem_filter, ExtTreeSet.get_eq]
+
+omit [Ord α] [TransOrd α] [LawfulEqOrd α] in
+theorem Set.filter_mem_sublists (l : _root_.List α) (q : α → Bool) :
+    l.filter q ∈ Quint.Set.sublists l := by
+  induction l with
+  | nil => simp [Quint.Set.sublists]
+  | cons x xs ih =>
+    simp only [Quint.Set.sublists, _root_.List.mem_append, _root_.List.mem_map]
+    by_cases h : q x
+    · right; exact ⟨_, ih, by simp [h]⟩
+    · left; simpa [_root_.List.filter_cons, h] using ih
+
+omit [Ord α] [TransOrd α] [LawfulEqOrd α] in
+theorem Set.sublist_of_mem_sublists {l m : _root_.List α} (h : m ∈ Quint.Set.sublists l) :
+    m.Sublist l := by
+  induction l generalizing m with
+  | nil => simp [Quint.Set.sublists] at h; simp [h]
+  | cons x xs ih =>
+    simp only [Quint.Set.sublists, _root_.List.mem_append, _root_.List.mem_map] at h
+    rcases h with h | ⟨m', hm', rfl⟩
+    · exact (ih h).cons x
+    · exact (ih hm').cons_cons x
+
+@[simp] theorem Set.mem_powerset_iff [DecidableEq α] (s t : Quint.Set α) :
+    t ∈ Quint.Set.powerset s ↔ Quint.Set.subseteq t s := by
+  simp only [Quint.Set.powerset, Quint.Set.subseteq]
+  constructor
+  · intro h x hx
+    rw [ExtTreeSet.mem_ofList] at h
+    simp only [_root_.List.contains_iff_mem, _root_.List.mem_map] at h
+    obtain ⟨m, hm, rfl⟩ := h
+    have := (Set.sublist_of_mem_sublists hm).subset
+    rw [ExtTreeSet.mem_ofList] at hx
+    exact ExtTreeSet.mem_toList.mp (this (by simpa using hx))
+  · intro h
+    rw [ExtTreeSet.mem_ofList]
+    simp only [_root_.List.contains_iff_mem, _root_.List.mem_map]
+    refine ⟨s.toList.filter (fun x => decide (x ∈ t)), Set.filter_mem_sublists _ _, ?_⟩
+    ext x
+    rw [ExtTreeSet.mem_ofList]
+    simp only [_root_.List.contains_iff_mem, _root_.List.mem_filter, ExtTreeSet.mem_toList,
+      decide_eq_true_eq]
+    exact ⟨fun h => h.2, fun hx => ⟨h x hx, hx⟩⟩
+
 end Lemmas
+
+/-! ## Empty collections and record field names -/
+
+/-- The element type of an empty collection literal (`Set()`, `Map()`, `List()`, `[]`). When
+nothing else determines it, it defaults to `Int` (any type would do: the collection is empty). -/
+class EmptyElem (α : Type) : Prop where
+  trivial : True := trivial
+
+instance (priority := low) instEmptyElem {α : Type} : EmptyElem α := {}
+@[default_instance low] instance instEmptyElemInt : EmptyElem Int := {}
+
+/-- `Set()` -/
+def Set.empty' {α : Type} [EmptyElem α] [Ord α] : Quint.Set α := ∅
+/-- `Map()` -/
+def Map.empty' {α β : Type} [EmptyElem α] [EmptyElem β] [Ord α] : Quint.Map α β := ∅
+/-- `List()`, `[]` -/
+def List.empty' {α : Type} [EmptyElem α] : _root_.List α := []
+
+@[simp] theorem Set.empty'_eq {α : Type} [EmptyElem α] [Ord α] :
+    (Set.empty' : Quint.Set α) = ∅ := rfl
+@[simp] theorem Map.empty'_eq {α β : Type} [EmptyElem α] [EmptyElem β] [Ord α] :
+    (Map.empty' : Quint.Map α β) = ∅ := rfl
+@[simp] theorem List.empty'_eq {α : Type} [EmptyElem α] : (List.empty' : _root_.List α) = [] := rfl
+
+/-- The field names of a record type (`r.fieldNames()`); the frontend declares an instance for
+every record structure. -/
+class FieldNames (α : Type) where
+  fieldNames : Quint.Set String
+
+/-- `r.fieldNames()` -/
+@[reducible] def fieldNamesOf {α : Type} [FieldNames α] (_ : α) : Quint.Set String :=
+  FieldNames.fieldNames α
 
 end Quint

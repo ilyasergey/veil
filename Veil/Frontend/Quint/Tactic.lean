@@ -27,6 +27,7 @@ syntax (name := quintGrind) "quint_grind" : tactic
 macro_rules
   | `(tactic| quint_grind) => `(tactic| (
       try simp only [Quint.Set.mem_ofList_iff, Quint.Map.get_set_eq, Quint.Set.mem_tuples2_iff,
+        Quint.Set.mem_filter_iff, Quint.Set.empty'_eq, Quint.Map.empty'_eq, Quint.List.empty'_eq,
         List.mem_cons, List.not_mem_nil, or_false] at *
       first
         | done
@@ -37,3 +38,4 @@ macro_rules
 /- Membership in a set literal is a disjunction of equalities, which the SMT backend translates
 (it cannot translate the set itself). -/
 attribute [smtSimp] Quint.Set.mem_ofList_iff List.mem_cons List.not_mem_nil
+  Quint.Set.empty'_eq Quint.Map.empty'_eq Quint.List.empty'_eq

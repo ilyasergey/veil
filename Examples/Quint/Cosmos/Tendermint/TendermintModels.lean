@@ -12,7 +12,10 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Three instances of `TendermintTest`. The file elaborates; Veil does not check
+it: the Tendermint actions over its record-valued state do not elaborate within Lean's default
+heartbeat limit, so neither the instances nor their tests (`#quint_test` would run them through
+the instances) are checked.
 -/
 
 --/ A few handy small models that are good for debugging and inspection

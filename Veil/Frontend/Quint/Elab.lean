@@ -424,6 +424,7 @@ partial def trExpr (stx : Syntax) : TrM Term := withRef stx do
   | `(quint_expr| ($e)) => do `(($(← trExpr e)))
   | `(quint_expr| ($e, $es,*)) => trTuple (#[e] ++ es.getElems)
   | `(quint_expr| [ $es,* ]) => do
+    if es.getElems.isEmpty then return ← `(Quint.List.empty')
     let es ← es.getElems.mapM trExpr
     `([$es,*])
   | `(quint_expr| { $e:quint_expr }) => trExpr e
@@ -639,6 +640,22 @@ partial def inlineDef (dd : QDef) (args : Array Term) : TrM Term := do
     r ← `(let $id:ident := $a; $r)
   `(($r))
 
+/-- Whether an expression is syntactically a condition (a comparison, a connective, `not`, or a
+quantifier or membership test). -/
+partial def isCondSyntax (stx : Syntax) : Bool :=
+  let s := unwrap stx
+  if isApp s then
+    let m := match asQualId? s[0] with
+      | some q => let (n, fs) := qualIdParts q; fs.getLastD n
+      | none => (dot? s[0]).map (·.2) |>.getD ""
+    ["forall", "exists", "contains", "in", "subseteq", "not", "and", "or", "iff", "implies"].contains m
+  else match s with
+  | `(quint_expr| $_ == $_) | `(quint_expr| $_ != $_) | `(quint_expr| $_ < $_)
+  | `(quint_expr| $_ <= $_) | `(quint_expr| $_ > $_) | `(quint_expr| $_ >= $_)
+  | `(quint_expr| $_ and $_) | `(quint_expr| $_ or $_) | `(quint_expr| $_ iff $_)
+  | `(quint_expr| $_ implies $_) | `(quint_expr| and { $_,* }) | `(quint_expr| or { $_,* }) => true
+  | _ => false
+
 partial def trLambda (stx : Syntax) : TrM Term := do
   let some (ps, tuple, body) := lambda? stx | throwErrorAt stx "expected a lambda"
   let names := ps.map paramName
@@ -647,7 +664,8 @@ where
   go (names : List String) (acc : List Ident) (tuple : Bool) (body : Syntax) : TrM Term := do
     match names with
     | [] =>
-      let b ← trExpr body
+      -- a lambda that returns a condition returns a `Bool` (a Quint value), e.g. in `map`
+      let b ← if isCondSyntax body then do `(decide ($(← trExpr body))) else trExpr body
       let ids := acc.reverse.toArray
       if tuple then
         let x ← freshName "t"
@@ -841,6 +859,7 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   let all : TrM (Array Term) := (List.range n).toArray.mapM arg
   match name, n with
   -- sets
+  | "Set", 0 => `(Quint.Set.empty')
   | "Set", _ => do `(Quint.Set.ofList [$(← all),*])
   | "contains", 2 => do
     match (stxAt 0).bind (infSetIn? (← read).mod) with
@@ -897,6 +916,7 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   | "allListsUpTo", 2 => do `(Quint.Set.allListsUpTo $(← arg 0) $(← arg 1))
   | "setOfMaps", 2 => do `(Quint.Set.setOfMaps $(← arg 0) $(← arg 1))
   -- maps
+  | "Map", 0 => `(Quint.Map.empty')
   | "Map", _ => do `(Quint.Map.ofList [$(← all),*])
   | "get", 2 => do `(Quint.Map.get $(← arg 0) $(← arg 1))
   | "set", 3 | "put", 3 => do `(Quint.Map.set $(← arg 0) $(← arg 1) $(← arg 2))
@@ -905,7 +925,9 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
   | "mapBy", 2 => do `(Quint.Map.mapBy $(← arg 0) $(← arg 1))
   | "setToMap", 1 => do `(Quint.Map.setToMap $(← arg 0))
   -- lists
+  | "List", 0 => `(Quint.List.empty')
   | "List", _ => do `([$(← all),*])
+  | "fieldNames", 1 => do `(Quint.fieldNamesOf $(← arg 0))
   | "append", 2 => do `(Quint.List.append $(← arg 0) $(← arg 1))
   | "concat", 2 => do `($(← arg 0) ++ $(← arg 1))
   | "head", 1 => do `(Quint.List.head $(← arg 0))
@@ -1244,6 +1266,17 @@ partial def trNondet (qd : QDef) (k : TrM DoItems) : TrM DoItems := do
         | some (e, f) => if f == "oneOf" then some e else none
         | none => none
     else none
+  -- `nondet x: T = apalache::generate(n)`: any value of type `T`
+  if setStx?.isNone then
+    if isApp rhs then
+      if let some q := asQualId? rhs[0] then
+        if (qualIdParts q).1 == "apalache::generate" then
+          let some ty := qd.retType?
+            | throwErrorAt qd.body "`apalache::generate` needs a type annotation on the `nondet`"
+          let tyT ← trType ty
+          return ← bindLocal qd.name fun x => do
+            let rest ← k
+            return #[← doItem (← `(doElem| let $x:ident ← pick $tyT))] ++ rest
   let some setStx := setStx? | throwErrorAt qd.body "`nondet` expects `S.oneOf()`"
   -- translate the set
   let (setT, inf?) ← match setStx with

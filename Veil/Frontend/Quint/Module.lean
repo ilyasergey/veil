@@ -157,6 +157,21 @@ structure Collected where
   assumes : Array (String × Syntax) := #[]
   constOrder : Array String := #[]
 
+/-- Names (Quint, unqualified heads) referenced in a syntax tree. -/
+partial def referencedNames (stx : Syntax) (acc : Std.HashSet String := {}) : Std.HashSet String :=
+  if stx.isOfKind ``quintQualId then
+    let (n, fs) := qualIdParts stx
+    let acc := acc.insert (if n.endsWith "'" then (n.dropEnd 1).toString else n)
+    -- `x.f(...)` may call a user operator `f`
+    fs.foldl (fun acc f => acc.insert f) acc
+  else if stx.isIdent then acc.insert (stx.getId.toString (escape := false))
+  else stx.getArgs.foldl (fun acc a => referencedNames a acc) acc
+
+/-- Whether a syntax tree assigns a variable (`x' = e`). -/
+partial def assignsVars (stx : Syntax) : Bool :=
+  if stx.isOfKind ``quintQualId then (qualIdParts stx).1.endsWith "'"
+  else stx.getArgs.any assignsVars
+
 def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
   let mut c : Collected := { mod := { name := modName } }
   for it in items do
@@ -226,6 +241,20 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
       throwErrorAt dcl "top-level destructuring `val` is not supported"
     else
       throwErrorAt dcl "unsupported Quint declaration"
+  -- a `def`/`val` that assigns variables (or calls an action) is an action: Quint infers its
+  -- mode, the frontend needs it to inline the definition into actions
+  let mut changed := true
+  let mut fuel := 20
+  while changed && fuel > 0 do
+    changed := false
+    fuel := fuel - 1
+    for (n, qd) in c.mod.defs.toList do
+      unless qd.kind == .def_ || qd.kind == .val do continue
+      let callsAction := (referencedNames qd.body).toList.any fun r =>
+        r != n && (c.mod.defs[r]?.map (·.kind == .action)).getD false
+      if assignsVars qd.body || callsAction then
+        c := { c with mod := { c.mod with defs := c.mod.defs.insert n { qd with kind := .action } } }
+        changed := true
   -- constructors and record fields
   let mut ctors : Std.HashMap String SumInfo := {}
   for td in c.typeDecls do
@@ -243,16 +272,6 @@ def collect (modName : Name) (items : Array Item) : CommandElabM Collected := do
   return c
 
 /-! ## Dependencies -/
-
-/-- Names (Quint, unqualified heads) referenced in a syntax tree. -/
-partial def referencedNames (stx : Syntax) (acc : Std.HashSet String := {}) : Std.HashSet String :=
-  if stx.isOfKind ``quintQualId then
-    let (n, fs) := qualIdParts stx
-    let acc := acc.insert (if n.endsWith "'" then (n.dropEnd 1).toString else n)
-    -- `x.f(...)` may call a user operator `f`
-    fs.foldl (fun acc f => acc.insert f) acc
-  else if stx.isIdent then acc.insert (stx.getId.toString (escape := false))
-  else stx.getArgs.foldl (fun acc a => referencedNames a acc) acc
 
 def defDeps (mod : ModInfo) (dcl : QDef) : Array String :=
   let refs := referencedNames dcl.body
@@ -554,7 +573,9 @@ def recordCommands (short : String) (fields : Array String) : Array String :=
     s!"attribute [local instance] lexOrd in\npublic instance {implicit} {cls "Ord"} {cls "Std.LawfulEqOrd"} : Std.LawfulEqOrd ({tyApp}) where\n" ++
       s!"  compare_self := by intro x; exact Std.ReflCmp.compare_self (cmp := compare) (a := x.toProd)\n" ++
       s!"  eq_of_compare := by\n    intro x y h\n    have h' : x.toProd = y.toProd := Std.LawfulEqCmp.eq_of_compare (cmp := compare) h\n    cases x; cases y; simp_all [{short}.toProd]",
-    s!"public instance {implicit} {cls "Repr"} : Repr ({tyApp}) where\n  reprPrec r _ := \"\{ \" ++ {reprBody} ++ \" }\""]
+    s!"public instance {implicit} {cls "Repr"} : Repr ({tyApp}) where\n  reprPrec r _ := \"\{ \" ++ {reprBody} ++ \" }\"",
+    s!"public instance {implicit} : Quint.FieldNames ({tyApp}) := ⟨Quint.Set.ofList [" ++
+      ", ".intercalate (fields.map fun f => s!"\"{f}\"").toList ++ "]⟩"]
 
 /-- Declare the record structure for these field names, unless it exists. -/
 def ensureRecordGlobal (fields : Array String) : CommandElabM Unit := do
@@ -603,7 +624,8 @@ partial def isTemporalExpr (mod : ModInfo) (stx : Syntax) : Bool :=
 action `A` (`actions`): one action gives `𝒲ℱ a`; several (e.g. `step`, which the frontend splits
 into one Veil action per branch) give fairness of their disjunction,
 `(◇ □ (Enabled a_1 ∨ …)) → □ ◇ (⟨ a_1 ⟩ ∨ …)` (strong: `□ ◇` instead of `◇ □`). -/
-partial def trTemporal (acts : Std.HashMap String (Array String)) (stx : Syntax) :
+partial def trTemporal (acts : Std.HashMap String (Array String))
+    (subs : Array (String × Ident) := #[]) (stx : Syntax) :
     TrM (TSyntax `tlfml) := do
   let mod := (← read).mod
   let s := unwrap stx
@@ -630,53 +652,57 @@ partial def trTemporal (acts : Std.HashMap String (Array String)) (stx : Syntax)
       let tk ← disj (← vs.mapM fun a => `(tlfml| ⟨ $a ⟩))
       if strong then `(tlfml| ((□ ◇ $en) → □ ◇ $tk)) else `(tlfml| ((◇ □ $en) → □ ◇ $tk))
   if !isTemporalExpr mod s then
-    let t ← trExpr s
+    let mut t ← trExpr s
+    -- the elements of the sets of enclosing quantifiers (of a subtype) as values of the element type
+    let refs := referencedNames s
+    for (q, x) in subs.reverse do
+      if refs.contains q then t ← `(let $x:ident := ($x:ident).val; $t)
     return ← `(tlfml| ⌜ $t ⌝)
   if let some (op, args) := callOf? s then
     match op, args with
-    | "always", #[p] => return ← `(tlfml| □ $(← trTemporal acts p))
-    | "eventually", #[p] => return ← `(tlfml| ◇ $(← trTemporal acts p))
+    | "always", #[p] => return ← `(tlfml| □ $(← trTemporal acts subs p))
+    | "eventually", #[p] => return ← `(tlfml| ◇ $(← trTemporal acts subs p))
     | "weakFair", #[a, _] => return ← fair false a
     | "strongFair", #[a, _] => return ← fair true a
     | "enabled", #[a] => return ← disj (← (← actionsOf a).mapM fun a => `(tlfml| Enabled $a))
-    | "not", #[p] => return ← `(tlfml| ¬ $(← trTemporal acts p))
+    | "not", #[p] => return ← `(tlfml| ¬ $(← trTemporal acts subs p))
     | "and", ps => return ← trConjT ps
     | "or", ps =>
-      let fs ← ps.mapM (trTemporal acts)
+      let fs ← ps.mapM (trTemporal acts subs)
       return ← disj fs
-    | "implies", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) → $(← trTemporal acts q)))
-    | "iff", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) ↔ $(← trTemporal acts q)))
-    | "leadsTo", #[p, q] => return ← `(tlfml| ($(← trTemporal acts p) ↝ $(← trTemporal acts q)))
+    | "implies", #[p, q] => return ← `(tlfml| ($(← trTemporal acts subs p) → $(← trTemporal acts subs q)))
+    | "iff", #[p, q] => return ← `(tlfml| ($(← trTemporal acts subs p) ↔ $(← trTemporal acts subs q)))
+    | "leadsTo", #[p, q] => return ← `(tlfml| ($(← trTemporal acts subs p) ↝ $(← trTemporal acts subs q)))
     | "forall", #[set, f] | "exists", #[set, f] =>
       -- a temporal formula for every (some) element of a set: `⋀ x ∈ S.toList, φ`
       match lambda? f with
       | some (#[p], false, body) =>
-        -- over the elements of the set, which the model checker enumerates; inside the body,
-        -- the element (of the subtype) is coerced to the element type where needed
+        -- over the elements of the set, which the model checker enumerates; the state predicates
+        -- of the body read the element (of the subtype) as a value of the element type
         let sT ← trExpr set
         return ← bindLocal (paramName p) fun x => do
-          let b ← trTemporal acts body
+          let b ← trTemporal acts (subs.push (paramName p, x)) body
           if op == "forall" then `(tlfml| (∀ $x:ident : { y // y ∈ $sT }, $b))
           else `(tlfml| (∃ $x:ident : { y // y ∈ $sT }, $b))
       | _ => throwErrorAt s "a temporal quantifier needs a lambda"
     | _, _ => pure ()
   match s with
-  | `(quint_expr| $p and $q) => `(tlfml| ($(← trTemporal acts p) ∧ $(← trTemporal acts q)))
-  | `(quint_expr| $p or $q) => `(tlfml| ($(← trTemporal acts p) ∨ $(← trTemporal acts q)))
-  | `(quint_expr| $p implies $q) => `(tlfml| ($(← trTemporal acts p) → $(← trTemporal acts q)))
-  | `(quint_expr| $p iff $q) => `(tlfml| ($(← trTemporal acts p) ↔ $(← trTemporal acts q)))
-  | `(quint_expr| $p leadsTo $q) => `(tlfml| ($(← trTemporal acts p) ↝ $(← trTemporal acts q)))
+  | `(quint_expr| $p and $q) => `(tlfml| ($(← trTemporal acts subs p) ∧ $(← trTemporal acts subs q)))
+  | `(quint_expr| $p or $q) => `(tlfml| ($(← trTemporal acts subs p) ∨ $(← trTemporal acts subs q)))
+  | `(quint_expr| $p implies $q) => `(tlfml| ($(← trTemporal acts subs p) → $(← trTemporal acts subs q)))
+  | `(quint_expr| $p iff $q) => `(tlfml| ($(← trTemporal acts subs p) ↔ $(← trTemporal acts subs q)))
+  | `(quint_expr| $p leadsTo $q) => `(tlfml| ($(← trTemporal acts subs p) ↝ $(← trTemporal acts subs q)))
   | `(quint_expr| and { $es,* }) => trConjT (es.getElems.map (·.raw))
   | `(quint_expr| $q:quintQualId) =>
     let (n, fs) := qualIdParts q
     match mod.defs[n]? with
-    | some td => if fs.isEmpty && td.kind == .temporal then trTemporal acts td.body
+    | some td => if fs.isEmpty && td.kind == .temporal then trTemporal acts subs td.body
                  else throwErrorAt s "unsupported temporal formula"
     | none => throwErrorAt s "unsupported temporal formula"
   | _ => throwErrorAt s "unsupported temporal formula"
 where
   trConjT (ps : Array Syntax) : TrM (TSyntax `tlfml) := do
-    let fs ← ps.mapM (trTemporal acts)
+    let fs ← ps.mapM (trTemporal acts subs)
     let mut r := fs.back!
     for f in fs.pop.reverse do r ← `(tlfml| $f ∧ $r)
     `(tlfml| ($r))
@@ -858,7 +884,7 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
     let some qd := mod.defs[n]? | continue
     unless qd.kind == .temporal && (qd.params.getD #[]).isEmpty do continue
     try
-      let f ← runTr mod (trTemporal actionMap qd.body)
+      let f ← runTr mod (trTemporal actionMap (stx := qd.body))
       let nid := mkIdentFrom qd.ref (Name.mkSimple (leanStr qd.name))
       let cmd ← `(command| temporal (only := $(mkIdent `check)) [$nid] $f)
       discard <| withRef qd.ref <| elabGenerated s!"temporal property `{qd.name}`" cmd
@@ -928,8 +954,10 @@ open Lean Elab Command
 /-- `quint_bmc k inv_1, ..., inv_n` checks with Veil's symbolic bounded model checker (SMT) that no
 execution of at most `k` steps (`k ≥ 2`) violates the boolean `val`s `inv_i`, for every value of
 the module's parameters: the counterpart of `quint verify --max-steps=k --invariant=...`
-(Apalache). It needs a state that the SMT backend handles (integers, booleans, sum types and
-records of these, not sets or maps). -/
+(Apalache). It needs a state that the SMT backend handles: integers, booleans, strings, sum types
+and records of these, and finite sets of these with the set operators of
+`Veil.Frontend.Quint.Smt` (not maps, `map`, `filter` or `powerset`). Proof reconstruction
+(`veil.smt.trust false`) does not support the theory of sets. -/
 syntax (name := quintBmcCmd) "quint_bmc " num quint_ident,+ : command
 
 @[command_elab quintBmcCmd] def elabQuintBmc : CommandElab := fun stx => do
@@ -952,8 +980,12 @@ syntax (name := quintBmcCmd) "quint_bmc " num quint_ident,+ : command
       let texts ← msgs.toList.mapM (·.data.toString)
       let vars := (quintVarsExt.getState (← getEnv))[modName]?.getD #[]
       let states := parseStates ("\n".intercalate texts)
-      let exec := if states.isEmpty then "" else renderStates vars states ++ "\n"
-      logInfoAt id (exec ++ s!"[violation] Found an issue ({ms}ms).\n  violates: {n}")
+      -- a counterexample has at least the initial state; otherwise Veil failed to check
+      if states.isEmpty then
+        logErrorAt id s!"[error] Veil could not check {n} ({ms}ms); see the errors above."
+      else
+        logInfoAt id (renderStates vars states ++ "\n" ++
+          s!"[violation] Found an issue ({ms}ms).\n  violates: {n}")
     else
       logInfoAt id s!"[ok] No violation of {n} found up to {k.getNat} steps ({ms}ms)."
 

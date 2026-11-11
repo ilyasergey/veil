@@ -62,7 +62,7 @@ Quint specifications into Veil and what the frontend does not translate.
 | Quint | Veil | Veil tool |
 | --- | --- | --- |
 | `quint verify --backend tlc` | `#quint_verify { } { }` | explicit-state model checker (Lace, `#model_check`) |
-| `quint verify --max-steps=k` (Apalache) | `quint_bmc k inv` | symbolic bounded model checker (SMT), for SMT-friendly state |
+| `quint verify --max-steps=k` (Apalache) | `quint_bmc k inv` | symbolic bounded model checker (SMT), for SMT-friendly state: integers, booleans, strings, sum types, records, and finite sets (cvc5's theory of sets) |
 | | `#quint_verify { } { } (maxDepth := k)` | explicit-state search to depth `k`, for any state |
 | `quint verify --inductive-invariant=I` (Apalache) | `#check_invariants` | SMT, or `quint_grind` for every verification condition |
 | `quint run --max-samples=n --max-steps=k` | `#quint_run { } { } (numTraces := n) (maxSteps := k)` | random simulation (`#simulate`) |
@@ -291,14 +291,19 @@ contains Quint modules without state or that are only used by other files, and n
 ## What the frontend does not cover
 
 - `#quint_test` checks *every* execution of a run, where `quint test` samples one; a test that
-  passes in Quint can therefore fail in Veil (e.g. `consensusRunTest` of `properValues`). Runs that
-  start with `nondet`, and the tests of the Solidity and Cosmos bank/ICS20 examples (whose actions
-  range over huge integer domains), are not run.
+  passes in Quint can therefore fail in Veil (e.g. `consensusRunTest` of `properValues`). Runs
+  may bind `nondet` and `val` values, branch with `if`, end with `fail()`, and repeat steps a
+  constant number of times; the tests of instances (`import M(...) as I`) run as `I::test`. A
+  `val` bound before the steps is re-evaluated in each step (Quint evaluates it once). Not run:
+  the tests of the Solidity and Cosmos bank/ICS20 examples, whose actions range over huge integer
+  domains, those of Tendermint, whose actions do not elaborate within Lean's default heartbeat
+  limit, and those of the eight-process k-set agreement instances (their small copies are tested).
 - Temporal properties with `orKeep` or `next` (action properties), or with fairness of an action
   with parameters, are not translated; the frontend reports each one.
-- Uninterpreted types (`type T` without a definition), `apalache::generate`, `fieldNames`,
-  re-exports (`export M as N`), and empty collections whose element type nothing determines
-  (`List()`) are not supported. The files that use them are elaborated with `quint.lenient`,
+- `quint_bmc` does not translate maps, nor the set operators `map`, `filter`, `fold` and
+  `powerset`, to SMT; states with these are checked by explicit-state search to depth `k`.
+- Uninterpreted types (`type T` without a definition) and re-exports (`export M as N`) are not
+  supported. The files that use them are elaborated with `quint.lenient`,
   which skips what does not elaborate and says so in a warning; their headers point this out.
 - Quint's run-time errors (`get` of a missing key, `head` of `[]`) are not errors in Veil: these
   operators return the default value of their type.

@@ -38,6 +38,10 @@ as they are in Quint.
 | `any { A, B }` inside an action | `let b ← pick Bool; if b then A else B` |
 | guards in `all { ... }` | `require` |
 | `match` | conditionals over `T.isC` / `T.getC` |
+| `Set()`, `Map()`, `List()` | empty collections; the element type is inferred, `int` when nothing determines it |
+| `r.fieldNames()` | the set of field names of the record type of `r` |
+| `nondet x: T = apalache::generate(n)` | `let x ← pick T` (every value of `T`) |
+| a `def`/`val` that assigns variables or calls actions | an action, as Quint infers |
 | `S.forall(x => P)`, `S.exists(...)` | `∀ x, x ∈ S → P`, `∃ x, x ∈ S ∧ P` (decided by enumerating `S`) |
 | `import M.*`, `import M(...) as I`, `export I.*` | the declarations of `M` are copied in (renamed `I::x` → `I_x`) |
 | `A::b` | `A_b` |
@@ -54,7 +58,7 @@ range, `chooseSome` of `Set()`) return the type's `default` in Veil.
 | Construct | Status | Workaround |
 | --- | --- | --- |
 | Uninterpreted `type T` | not supported | instantiate it, e.g. `type T = str` |
-| `run` with actions (`init.then(A).expect(P)`) | `#quint_test M`; not for runs that start with `nondet`, or over huge ranges | sample with `#quint_run` instead |
+| `run` with actions (`init.then(A).expect(P)`) | `#quint_test M`, including `nondet`/`val` bindings, `if`, `fail()`, `n.reps` with constant `n`, and the runs of instances `import N(...) as I`; a `val` binding is re-evaluated in each step | runs over huge ranges do not finish: sample with `#quint_run` instead |
 | `temporal` definitions | translated (`always`, `eventually`, `leadsTo`, fairness, set quantifiers) | `orKeep`, `next` and fairness of actions with parameters are not; write those in Veil's `temporal` syntax |
 | `Nat`, `Int` as values | only in `forall`/`exists`/`in`/`oneOf` | bound them, e.g. `(0).to(N)` |
 | Huge nondeterministic ranges (`0.to(MAX_UINT).oneOf()`) | enumerated in full | model check a copy with a small range, or use `#simulate` |

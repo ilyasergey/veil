@@ -285,4 +285,5 @@ module properChannelsTests {
 /-! ## Tests (`quint test`) -/
 
 #quint_test denomTraceTest
-#quint_test denomTraceSimulation
+#quint_test randomChannelsTests
+#quint_test properChannelsTests

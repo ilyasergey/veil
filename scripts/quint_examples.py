@@ -75,6 +75,33 @@ def module_imports(chunk: str):
     return set(re.findall(r'^\s*import\s+([A-Za-z0-9_]+)', chunk, re.M))
 
 
+def plain_imports(chunk: str):
+    """Modules imported with `import M.*`, `import M as I` or `import M.x` (not instances)."""
+    return set(re.findall(r'^\s*import\s+([A-Za-z0-9_]+)\s*(?:\.|as\b|from\b|$)', chunk, re.M))
+
+
+def instance_imports(chunk: str):
+    return set(re.findall(r'^\s*import\s+([A-Za-z0-9_]+)\s*\(', chunk, re.M))
+
+
+def is_parametric(mods, name, seen=()):
+    """Whether a module has constants, declared or imported without an instance."""
+    chunk = mods.get(name, '')
+    if re.search(r'^\s*const\s', chunk, re.M):
+        return True
+    return any(is_parametric(mods, m, seen + (name,)) for m in plain_imports(chunk)
+               if m in mods and m not in seen)
+
+
+def has_tests(mods, name, seen=()):
+    """Whether a module defines runs named `...Test`, or imports instances of such modules."""
+    chunk = mods.get(name, '')
+    if re.search(r'^\s*run\s+[A-Za-z0-9_]*Test\b', chunk, re.M):
+        return True
+    return any(has_tests(mods, m, seen + (name,)) for m in instance_imports(chunk)
+               if m in mods and m not in seen)
+
+
 def order_modules(chunks):
     """Put modules that are imported by a module of the same file before it (Quint allows any
     order; Lean elaborates top to bottom)."""
@@ -111,6 +138,13 @@ def generate(quint: str, only=None):
     commit = subprocess.run(['git', '-C', quint, 'rev-parse', 'HEAD'],
                             capture_output=True, text=True).stdout.strip()
     generated = []
+    # the modules of all examples, for the tests of instances of modules of other files
+    all_modules = {}
+    for root, _, files in os.walk(examples):
+        for f in files:
+            if f.endswith('.qnt'):
+                text = quint2veil.convert(open(os.path.join(root, f)).read())
+                all_modules.update(dict(split_modules(text)[1]))
     for root, _, files in os.walk(examples):
         for f in sorted(files):
             if not f.endswith('.qnt'):
@@ -159,12 +193,19 @@ def generate(quint: str, only=None):
                 + '`scripts/quint2veil.py` does this rewrite.\n\n'
                 + notes.strip() + '\n-/\n\n')
             footer = cfg.get('footer', '')
-            # `quint test`: the modules that define runs named `...Test`
-            tested = [name for name, chunk in chunks
-                      if re.search(r'^\s*run\s+[A-Za-z0-9_]*Test\b', chunk, re.M)]
-            if tested and not cfg.get('no_tests'):
+            # `quint test`: the modules that define runs named `...Test`, or import instances of such modules,
+            # except parametric modules (their instances are tested instead)
+            tested = [name for name, _ in chunks if has_tests(all_modules, name)
+                      and not is_parametric(all_modules, name)]
+            # copies of tested modules (e.g. smaller instances) are tested too
+            tested = [m for name in tested for m in [name] + [c[0] for c in copies.get(name, [])]]
+            no_tests = cfg.get('no_tests', [])
+            tested = [m for m in tested if not (no_tests is True or m in no_tests)]
+            pats = cfg.get('test_patterns', {})
+            if tested:
                 footer = (footer.rstrip() + '\n\n' if footer else '') + \
-                    '/-! ## Tests (`quint test`) -/\n\n' + '\n'.join(f'#quint_test {m}' for m in tested) + '\n'
+                    '/-! ## Tests (`quint test`) -/\n\n' + '\n'.join(
+                        f'#quint_test {m}' + (f' "{pats[m]}"' if m in pats else '') for m in tested) + '\n'
 
             out_path = os.path.join(OUT, lean_rel(rel))
             os.makedirs(os.path.dirname(out_path), exist_ok=True)

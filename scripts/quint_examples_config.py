@@ -204,11 +204,34 @@ checked by random simulation.""",
         },
     },
     'classic/distributed/ConsensusAlgorithm/KSetAgreementConsensus.qnt': {
-        'notes': """k-set agreement, on top of `ConsensusAlg` (imported from its Lean file). The file
-elaborates, but no Veil check runs on it: the initial action picks the processes' proposals from
-`Procs.setOfMaps(...)`, millions of maps for the eight processes of its instances, which Veil's
-simulator and model checker enumerate (Quint's simulator samples one instead). `ConsensusAlg.lean`
-checks the same algorithm on a smaller instance. For the same reason its tests are not run.""",
+        'notes': """k-set agreement, on top of `ConsensusAlg` (imported from its Lean file). The
+initial action picks the processes' proposals from `Procs.setOfMaps(...)`: millions of maps for
+the eight processes of Quint's instances, which Veil's simulator and model checker enumerate
+(Quint's simulator samples one instead). So the instances of the Quint file only elaborate, and
+copies with four processes are checked instead: `KSetProperValues_small` (at most `MAX_FAULTS = 2`
+crashes, `K = 2`) satisfies `kSetAgreement` and `validity`, and `KSetBadValues_small` (two
+crashes, one tolerated, `K = 1`) violates `kSetAgreement`, like Quint's `KSetBadValues`. Their
+`consensusRunTest` runs are tested; `consensusDisagreementTest` is not, since its scenario names
+the processes of the eight-process instance.""",
+        'copies': {
+            'KSetProperValues': [('KSetProperValues_small', [(
+                'NUM_PPROCESSES = 8, MAX_FAULTS = 3, ACTUAL_FAULTS = 3, K = 2, MAX_ROUNDS = (3/2 + 1)',
+                'NUM_PPROCESSES = 5, MAX_FAULTS = 2, ACTUAL_FAULTS = 2, K = 2, MAX_ROUNDS = (2/2 + 1)')],
+                sim('KSetProperValues_small', ['kSetAgreement', 'validity']))],
+            'KSetBadValues': [('KSetBadValues_small', [(
+                'NUM_PPROCESSES = 8, MAX_FAULTS = 3, ACTUAL_FAULTS = 4, K = 2, MAX_ROUNDS = (3/2 + 1)',
+                'NUM_PPROCESSES = 5, MAX_FAULTS = 1, ACTUAL_FAULTS = 2, K = 1, MAX_ROUNDS = (1/1 + 1)')],
+                sim('KSetBadValues_small', ['kSetAgreement'], violation=True))],
+        },
+        'no_tests': ['KSetProperValues', 'KSetBadValues'],
+        # the scenario of `consensusDisagreementTest` names the processes of the large instance
+        'test_patterns': {'KSetBadValues_small': 'consensusRunTest'},
+    },
+    'cosmos/tendermint/TendermintModels.qnt': {
+        'notes': """Three instances of `TendermintTest`. The file elaborates; Veil does not check
+it: the Tendermint actions over its record-valued state do not elaborate within Lean's default
+heartbeat limit, so neither the instances nor their tests (`#quint_test` would run them through
+the instances) are checked.""",
         'no_tests': True,
     },
     'classic/distributed/Bakery/bakery.qnt': {
@@ -269,18 +292,14 @@ model checker and the simulator use the bounded copy below.""",
     'language-features/booleans.qnt': {'tails': {'booleans': mc('booleans')}},
     'language-features/counters.qnt': {'tails': {'counters': both('counters', depth=5)}},
     'language-features/integers.qnt': {'tails': {'integers': both('integers', depth=3)}},
-    'language-features/lists.qnt': {
-        'notes': LENIENT_NOTE,
-        'pre': {'lists': LENIENT},
-        'tails': {'lists': both('lists', depth=3)}},
+    'language-features/lists.qnt': {'tails': {'lists': both('lists', depth=3)}},
     'language-features/maps.qnt': {'tails': {'maps': both('maps', depth=3)}},
     'language-features/sets.qnt': {'tails': {'sets': both('sets', depth=3)}},
     'language-features/tuples.qnt': {'tails': {'tuples': both('tuples', depth=3)}},
-    'language-features/records.qnt': {
-        'notes': LENIENT_NOTE,
-        'pre': {'records': LENIENT},
-        'tails': {'records': both('records', depth=3)}},
-    'language-features/generate.qnt': {'notes': LENIENT_NOTE, 'pre': {'gen': LENIENT}},
+    'language-features/records.qnt': {'tails': {'records': both('records', depth=3)}},
+    'language-features/generate.qnt': {'notes': """`apalache::generate(n)` in `nondet x: T = apalache::generate(n)`
+picks any value of type `T` (`pick T`); there is no bound `n` on its size, so the module elaborates
+but is not model checked."""},
     'language-features/imports.qnt': {'notes': LENIENT_NOTE, 'pre': {'Math': LENIENT}},
     'cosmos/ics23/ics23.qnt': {'notes': LENIENT_NOTE, 'pre': {'basics': LENIENT}},
     'language-features/option.qnt': {'tails': {'option': both('option', depth=3)}},

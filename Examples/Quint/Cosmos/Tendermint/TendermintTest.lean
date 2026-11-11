@@ -106,7 +106,3 @@ module TendermintTest {
     }
   }
 }
-
-/-! ## Tests (`quint test`) -/
-
-#quint_test TendermintTest
