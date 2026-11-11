@@ -250,8 +250,12 @@ def foldFieldRepresentationGet (e : Expr) : TermElabM Expr := do
     unless isGet? do
       return .done sube
     let ty ← inferType sube
-    let ty ← reduce ty (skipTypes := false)
-    let sube' ← mkAppOptM ``id #[some ty, some sube]
+    let ty' ← reduce ty (skipTypes := false)
+    -- Full reduction also unfolds functions inside the type, e.g. the `compare` of a
+    -- `Std.ExtTreeSet Int compare` into recursors, which the type checker may then fail to match
+    -- with the field's type; unfold only the head of the type in that case.
+    let sube' ← try mkAppOptM ``id #[some ty', some sube]
+      catch _ => mkAppOptM ``id #[some (← whnf ty), some sube]
     return .done sube')
 
 end MetaTools
