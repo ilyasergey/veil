@@ -162,9 +162,10 @@ def generate(quint: str, only=None):
             body = prefix
             copies = cfg.get('copies', {})
             for name, chunk in chunks:
+                orig = chunk
                 for (new, subs, ctail) in copies.get(name, []):
                     # a copy of the module with textual substitutions, e.g. smaller ranges
-                    c = re.sub(r'^module\s+' + re.escape(name) + r'\b', 'module ' + new, chunk, count=1)
+                    c = re.sub(r'^module\s+' + re.escape(name) + r'\b', 'module ' + new, orig, count=1)
                     for a, b in subs:
                         c = c.replace(a, b)
                     c = insert_tail(c, ctail)

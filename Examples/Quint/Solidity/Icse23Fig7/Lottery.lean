@@ -414,3 +414,7 @@ module lotteryTests {
             .then(commit(DrawTx(lotteryState.owner, 3)))
     }
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test lotteryTests

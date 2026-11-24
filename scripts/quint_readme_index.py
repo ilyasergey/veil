@@ -21,9 +21,24 @@ ROOT = os.path.dirname(HERE)
 RESULT = re.compile(r'Examples/Quint/(\S+\.lean):(\d+):\d+: (?:error: )?(✅|❌)\s*(.*)')
 
 
+POS = re.compile(r'Examples/Quint/(\S+\.lean):(\d+):\d+:')
+TESTS = re.compile(r'(\d+) passing, (\d+) failing, (\d+) not checked')
+
+
 def results_by_file(log: str):
     out = {}
+    pos = None
     for line in open(log, errors='replace'):
+        p = POS.search(line)
+        if p:
+            pos = (p.group(1), int(p.group(2)))
+        t = TESTS.search(line)
+        if t and pos:
+            # the summary of `#quint_test`, in the message that starts at the command
+            ok, bad, nc = int(t.group(1)), int(t.group(2)), int(t.group(3))
+            out.setdefault(pos[0], {})[pos[1]] = ('✅' if bad == 0 and nc == 0 else '❌',
+                                                   f'tests: {t.group(0)}')
+            continue
         m = RESULT.search(line)
         if not m:
             continue
@@ -41,6 +56,8 @@ def describe(src_line: str, mark: str, rest: str) -> str:
         kind = 'temporal'
     elif 'quint_bmc' in src_line:
         kind = 'BMC'
+    elif '#quint_test' in src_line:
+        return f'{mark} `quint test`: ' + rest.removeprefix('tests: ')
     elif '#model_check' in src_line or '#quint_verify' in src_line:
         kind = f'model checking, depth ≤ {depth.group(1)}' if depth else 'model checking'
     else:

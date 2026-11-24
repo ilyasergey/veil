@@ -10,7 +10,8 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Instances of parametric modules, two of them with state (`V1`, `V2`). `inv` is
+checked to depth 3, as `quint verify --max-steps=3` does.
 -/
 
 module A {
@@ -57,3 +58,9 @@ module instances {
   -- The two variables should increment independently
   val inv = V1::counter == 0 or V2::counter > V1::counter
 }
+
+quint_invariant inv
+#gen_spec
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end instances

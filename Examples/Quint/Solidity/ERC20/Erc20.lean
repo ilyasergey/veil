@@ -10,7 +10,12 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Quint checks this file with `quint verify --max-steps=3` (Apalache, symbolic). Veil's
+explicit-state model checker enumerates every value of a `nondet`, so it checks copies of the
+modules with smaller domains (`..._small`, described above each copy) to the same depth, and runs
+the simulator on them. `totalSupplyInv`, `zeroAddressInv` and `noOverflowsInv` hold. `transferTest` starts in
+any state of `initArbitrary` (every map of balances and allowances), which Veil enumerates and
+`quint test` samples; it is run on `erc20Tests_tiny` (three addresses, amounts `0` and `1`).
 -/
 
 /-*
@@ -367,6 +372,260 @@ module erc20Tests {
 }
 
 -- executing ERC20 transactions together with the mempool
+
+/-! ### `erc20Tests_small`: a copy of `erc20Tests` for checking
+
+The Veil checks below run on this copy, which differs from `erc20Tests` only by: `pure val ADDR = Set("0", "alice", "bob", "eve")` → `pure val ADDR = Set("0", "alice", "bob")`; `pure val AMOUNTS = (0).to(100)` → `pure val AMOUNTS = (0).to(2)`.
+-/
+module erc20Tests_small {
+    -- We are using this module to test the contract,
+    -- so we fix the set of addresses right away.
+    pure val ADDR = Set("0", "alice", "bob")
+    -- import all definitions from erc20 for the fixed addresses
+    import erc20(AllAddresses = ADDR).*
+
+    -- We also restrict the amounts to restrict the search scope.
+    -- When #566 is fixed, we would be able to use 256-bit integers.
+    pure val AMOUNTS = (0).to(2)
+
+    var erc20State: Erc20State
+
+    action init = all {
+        nondet sender = ADDR.exclude(Set(ZERO_ADDRESS)).oneOf()
+        nondet initialSupply = oneOf(AMOUNTS)
+        erc20State' = newErc20(sender, initialSupply),
+    }
+
+    -- a helper action that assigns to state, provided that there are no errors
+    action fromResult(result: Erc20Result): bool = all {
+        result.error == "",
+        erc20State' = result.state,
+    }
+
+    action step = {
+        -- run the contract methods
+        nondet sender = oneOf(ADDR)
+        nondet amount = oneOf(AMOUNTS)
+        any {
+            -- transfer
+            nondet toAddr = oneOf(ADDR)
+            fromResult(erc20State.transfer(sender, toAddr, amount)),
+            -- approve
+            nondet spender = oneOf(ADDR)
+            fromResult(erc20State.approve(sender, spender, amount)),
+            -- transferFrom
+            nondet fromAddr = oneOf(ADDR)
+            nondet toAddr = oneOf(ADDR)
+            fromResult(erc20State.transferFrom(sender, fromAddr, toAddr, amount)),
+        }
+    }
+
+    -- check the following invariants via:
+    -- quint run --verbosity=3 --main=erc20Tests --invariant=noOverflowsInv erc20.qnt
+    val totalSupplyInv = isTotalSupplyCorrect(erc20State)
+
+    val zeroAddressInv = isZeroAddressEmpty(erc20State)
+
+    val noOverflowsInv = isNoOverflows(erc20State)
+
+    -- Randomized tests that test whether postconditions holds true.
+
+    -- Since we want to test ERC20 methods in arbitrary states,
+    -- not just in the initial states, we have to describe "reasonable" states.
+    action initArbitrary = {
+        nondet owner = ADDR.exclude(Set(ZERO_ADDRESS)).oneOf()
+        nondet balances = ADDR.setOfMaps(AMOUNTS).oneOf()
+        nondet allowances = tuples(ADDR, ADDR).setOfMaps(AMOUNTS).oneOf()
+        erc20State' = {
+            balanceOf: balances,
+            totalSupply: sumOverBalances(balances),
+            allowance: allowances,
+            owner: owner,
+        }
+    }
+
+    -- We want the contract to be only in "valid" states.
+    -- So we have to define what it means.
+    pure def isValid(s: Erc20State): bool = and {
+        isZeroAddressEmpty(s),
+        isTotalSupplyCorrect(s),
+        isNoOverflows(s),
+    }
+
+    -- the result of transfer matches our intuition
+    run transferTest = {
+        nondet sender = oneOf(ADDR)
+        nondet amount = oneOf(AMOUNTS)
+        nondet toAddr = oneOf(ADDR)
+        initArbitrary.then(
+            val result = erc20State.transfer(sender, toAddr, amount)
+            val { state, returnedTrue, error } = result
+            val ob = erc20State.balanceOf
+            val nb = state.balanceOf
+            all {
+                assert(or {
+                    -- if we started in an invalid state, no guarantees
+                    not(isValid(erc20State)),
+                    -- if there were errors or transfer returned false, no guarantees
+                    not(returnedTrue),
+                    error != "",
+                    -- otherwise, the transfer should have happened
+                    if (sender != toAddr) and {
+                        nb.get(sender) == ob.get(sender) - amount,
+                        nb.get(toAddr) == ob.get(toAddr) + amount,
+                        ADDR.forall(a =>
+                            a == sender or a == toAddr or nb.get(a) == ob.get(a)
+                        ),
+                    } else {
+                        nb == ob
+                    },
+                }),
+                assert(state.allowance == erc20State.allowance),
+                assert(state.owner == erc20State.owner),
+                assert(state.totalSupply == erc20State.totalSupply),
+                -- the new state has to be valid only if the old one was valid
+                assert(state.isValid() or not(erc20State.isValid())),
+                erc20State' = state
+            }
+        )
+    }
+
+    -- TODO: add functional tests for approve and transferFrom
+}
+
+quint_invariant totalSupplyInv, zeroAddressInv, noOverflowsInv
+#gen_spec
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end erc20Tests_small
+
+
+-- executing ERC20 transactions together with the mempool
+
+/-! ### `erc20Tests_tiny`: a copy of `erc20Tests` for checking
+
+The Veil checks below run on this copy, which differs from `erc20Tests` only by: `pure val ADDR = Set("0", "alice", "bob", "eve")` → `pure val ADDR = Set("0", "alice", "bob")`; `pure val AMOUNTS = (0).to(100)` → `pure val AMOUNTS = (0).to(1)`.
+-/
+module erc20Tests_tiny {
+    -- We are using this module to test the contract,
+    -- so we fix the set of addresses right away.
+    pure val ADDR = Set("0", "alice", "bob")
+    -- import all definitions from erc20 for the fixed addresses
+    import erc20(AllAddresses = ADDR).*
+
+    -- We also restrict the amounts to restrict the search scope.
+    -- When #566 is fixed, we would be able to use 256-bit integers.
+    pure val AMOUNTS = (0).to(1)
+
+    var erc20State: Erc20State
+
+    action init = all {
+        nondet sender = ADDR.exclude(Set(ZERO_ADDRESS)).oneOf()
+        nondet initialSupply = oneOf(AMOUNTS)
+        erc20State' = newErc20(sender, initialSupply),
+    }
+
+    -- a helper action that assigns to state, provided that there are no errors
+    action fromResult(result: Erc20Result): bool = all {
+        result.error == "",
+        erc20State' = result.state,
+    }
+
+    action step = {
+        -- run the contract methods
+        nondet sender = oneOf(ADDR)
+        nondet amount = oneOf(AMOUNTS)
+        any {
+            -- transfer
+            nondet toAddr = oneOf(ADDR)
+            fromResult(erc20State.transfer(sender, toAddr, amount)),
+            -- approve
+            nondet spender = oneOf(ADDR)
+            fromResult(erc20State.approve(sender, spender, amount)),
+            -- transferFrom
+            nondet fromAddr = oneOf(ADDR)
+            nondet toAddr = oneOf(ADDR)
+            fromResult(erc20State.transferFrom(sender, fromAddr, toAddr, amount)),
+        }
+    }
+
+    -- check the following invariants via:
+    -- quint run --verbosity=3 --main=erc20Tests --invariant=noOverflowsInv erc20.qnt
+    val totalSupplyInv = isTotalSupplyCorrect(erc20State)
+
+    val zeroAddressInv = isZeroAddressEmpty(erc20State)
+
+    val noOverflowsInv = isNoOverflows(erc20State)
+
+    -- Randomized tests that test whether postconditions holds true.
+
+    -- Since we want to test ERC20 methods in arbitrary states,
+    -- not just in the initial states, we have to describe "reasonable" states.
+    action initArbitrary = {
+        nondet owner = ADDR.exclude(Set(ZERO_ADDRESS)).oneOf()
+        nondet balances = ADDR.setOfMaps(AMOUNTS).oneOf()
+        nondet allowances = tuples(ADDR, ADDR).setOfMaps(AMOUNTS).oneOf()
+        erc20State' = {
+            balanceOf: balances,
+            totalSupply: sumOverBalances(balances),
+            allowance: allowances,
+            owner: owner,
+        }
+    }
+
+    -- We want the contract to be only in "valid" states.
+    -- So we have to define what it means.
+    pure def isValid(s: Erc20State): bool = and {
+        isZeroAddressEmpty(s),
+        isTotalSupplyCorrect(s),
+        isNoOverflows(s),
+    }
+
+    -- the result of transfer matches our intuition
+    run transferTest = {
+        nondet sender = oneOf(ADDR)
+        nondet amount = oneOf(AMOUNTS)
+        nondet toAddr = oneOf(ADDR)
+        initArbitrary.then(
+            val result = erc20State.transfer(sender, toAddr, amount)
+            val { state, returnedTrue, error } = result
+            val ob = erc20State.balanceOf
+            val nb = state.balanceOf
+            all {
+                assert(or {
+                    -- if we started in an invalid state, no guarantees
+                    not(isValid(erc20State)),
+                    -- if there were errors or transfer returned false, no guarantees
+                    not(returnedTrue),
+                    error != "",
+                    -- otherwise, the transfer should have happened
+                    if (sender != toAddr) and {
+                        nb.get(sender) == ob.get(sender) - amount,
+                        nb.get(toAddr) == ob.get(toAddr) + amount,
+                        ADDR.forall(a =>
+                            a == sender or a == toAddr or nb.get(a) == ob.get(a)
+                        ),
+                    } else {
+                        nb == ob
+                    },
+                }),
+                assert(state.allowance == erc20State.allowance),
+                assert(state.owner == erc20State.owner),
+                assert(state.totalSupply == erc20State.totalSupply),
+                -- the new state has to be valid only if the old one was valid
+                assert(state.isValid() or not(erc20State.isValid())),
+                erc20State' = state
+            }
+        )
+    }
+
+    -- TODO: add functional tests for approve and transferFrom
+}
+
+
+
+
+-- executing ERC20 transactions together with the mempool
 module mempool {
     -- We are using this module to test the contract,
     -- so we fix the set of addresses right away.
@@ -536,3 +795,8 @@ module mempool {
         .then(commit(TransferFromTx("bob", "alice", "eve", 54)))
     }
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test erc20Tests_tiny
+#quint_test mempool

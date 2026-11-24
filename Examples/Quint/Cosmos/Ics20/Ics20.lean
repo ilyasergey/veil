@@ -703,3 +703,7 @@ module ics20Test {
     )
   )
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test ics20Test

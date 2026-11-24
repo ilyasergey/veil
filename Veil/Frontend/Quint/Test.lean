@@ -283,7 +283,28 @@ partial def compileRun (env : TyEnv) (consts : Std.HashMap String Syntax)
       if let some rd := runs[n]? then
         if (rd.params.getD #[]).isEmpty then return ← go rd.body binds entry guards assigned top
     step
+  | `(quint_expr| all { $es,* }) =>
+    -- `all { c_1, ..., R, ..., c_n }` with one run `R` (e.g. a call of a run made of several
+    -- steps): the other conjuncts are evaluated in the state where `R` starts, so they guard its
+    -- first step
+    let es := es.getElems.map (·.raw)
+    let rs := es.filter (isRunExpr runs)
+    if h : rs.size = 1 then
+      let others ← (es.filter (!isRunExpr runs ·)).mapM fun e => return s!"{← sourceOf e}"
+      go rs[0] binds entry (guards ++ others) assigned top
+    else step
   | _ => step
+where
+  /-- Whether an expression is a run of several steps: a call of a run, or `then`, `reps`,
+  `expect` or `fail`. -/
+  isRunExpr (runs : Std.HashMap String QDef) (e : Syntax) : Bool :=
+    let u := unwrap e
+    match callOf? u with
+    | some (op, _) => ["then", "reps", "expect", "fail"].contains op || runs.contains op
+    | none =>
+      match asQualId? u with
+      | some q => let (n, fs) := qualIdParts q; fs.isEmpty && runs.contains n
+      | none => false
 
 /-- Quint text of the bindings: the `nondet` values of `fresh` are chosen, the others are read
 from their state variables. -/
@@ -431,7 +452,7 @@ def isTestName (pat? : Option String) (n : String) : Bool :=
   let (modStr, _) := qualIdParts stx[1]
   let some mstx := (quintModuleExt.getState (← getEnv)).find? (Name.mkSimple modStr)
     | throwErrorAt stx[1] "unknown Quint module `{modStr}`"
-  -- the runs of `M` (with those of the modules it imports), and those of the instances that `M`
+  -- the runs of `M` (with those of the modules it imports directly), and those of the instances that `M`
   -- imports with `import N(c = e, ...) as I`, tested on a module that imports the instance
   let isInstanceAs (dcl : Syntax) := dcl.isOfKind ``quintInstance && (asPrefix? dcl[5]).isSome
   let own := mstx[3].getArgs.filter (!isInstanceAs ·)
@@ -450,8 +471,28 @@ def isTestName (pat? : Option String) (n : String) : Bool :=
   let mut failing := 0
   let mut skipped := 0
   let pat? := (stx[2].getOptional?).bind (·.isStrLit?)
+  -- the runs declared in a list of declarations
+  let ownRuns (ds : Array Syntax) : Std.HashSet String :=
+    ds.foldl (fun acc dcl =>
+      if dcl.isOfKind ``quintOper then
+        let d := parseOperDef dcl[0]
+        if d.kind == .run then acc.insert d.name else acc
+      else acc) {}
   for (pfx, header, decls) in targets do
     let items ← expandImports decls
+    -- as `quint test`: the runs of the module and of the modules it imports directly
+    -- (`import N.*`, `import N(...).*`); imports are not transitive
+    let mut testable := ownRuns decls
+    for dcl in decls do
+      let n? : Option String :=
+        if dcl.isOfKind ``quintImport && !dcl[1][0].isOfKind ``quintQualId && (asPrefix? dcl[2]).isNone then
+          some (qualIdParts dcl[1][0][0]).1
+        else if dcl.isOfKind ``quintInstance && (asPrefix? dcl[5]).isNone then
+          some (qualIdParts dcl[1]).1
+        else none
+      if let some n := n? then
+        if let some nstx := (quintModuleExt.getState (← getEnv)).find? (Name.mkSimple n) then
+          testable := testable.union (ownRuns nstx[3].getArgs)
     -- the values of the constants: from the instances, and `pure val`s without parameters
     let consts : Std.HashMap String Syntax := items.foldl (fun m it => m.union it.subst) {}
     let defs := items.map (·.decl) |>.filter (·.isOfKind ``quintOper) |>.map (parseOperDef ·[0])
@@ -471,6 +512,7 @@ def isTestName (pat? : Option String) (n : String) : Bool :=
       | none => m) env
     for d in defs do
       unless d.kind == .run && (d.params.getD #[]).isEmpty && isTestName pat? d.name do continue
+      unless testable.contains d.name do continue
       let name := pfx ++ d.name
       let testName := s!"{leanStr modStr}__run_{leanStr (pfx.replace "::" "_")}{leanStr d.name}"
       match ← checkRun header testName env consts defMap runs d with

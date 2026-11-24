@@ -10,7 +10,7 @@
 | `quint verify --inductive-invariant=I` (Apalache) | `quint_invariant` of the conjuncts and `#check_invariants` (SMT), or `quint_grind` for every VC (`macro_rules \| \`(tactic\| veil_solve) => \`(tactic\| quint_grind)` and `set_option veil.solver "custom" in #check_invariants`) |
 | `quint run --max-samples=n --max-steps=k` | `#quint_run { } { } (numTraces := n) (maxSteps := k) (seed := s)` |
 | `quint verify --temporal=p --backend tlc` | `#quint_temporal [p] { } { }` (Lasso, `#temporal_check`); the frontend translates the module's `temporal` definitions |
-| `quint test` | `#quint_test M` after the module (every execution of each `...Test` run, also those of the instances `M` imports with `as`); `#quint_test M "pattern"` selects runs; pure `run`s also become `#guard` checks |
+| `quint test` | `#quint_test M` after the module (every execution of each `...Test` run of `M` and of the modules it imports directly, as `quint test` does, also those of the instances `M` imports with `as`); `#quint_test M "pattern"` selects runs; pure `run`s also become `#guard` checks |
 | a property expected to fail | `set_option veil.violationIsError false in` before the check |
 
 `#quint_verify` and `#quint_run` take exactly the arguments of `#model_check` and `#simulate`,
@@ -46,3 +46,15 @@ quint run --main=M --invariant=inv --max-samples=1000 spec.qnt   # simulator
 Mismatches usually come from: a variable an action leaves unassigned (Veil keeps it, Quint
 errors), a runtime error in Quint that Veil turns into a default value, or a bounded range in the
 Veil copy. Report the cause; do not tune the spec until the numbers agree.
+
+## Large domains: small copies
+
+Apalache reasons about `nondet x = S.oneOf()` symbolically; Veil's explicit-state model checker
+and `#quint_test` enumerate `S`. When `S` is large (`0.to(100)`, `Int`, balances of `10^15`,
+`setOfMaps` of amounts), check a copy of the module with smaller domains to the same depth
+(`copies` in `scripts/quint_examples_config.py`, helper `small`): one copy for the invariants
+that should hold, one per invariant that should be violated, and a separate small copy for a test
+that starts in every state of a large domain (ERC20's `transferTest` from `initArbitrary`). Keep
+the copies' tests off when they assert values of the large instance. Check an unexpected
+violation against Quint with a `run` that replays it and asserts the negated invariant
+(`quint test`); `quint run` rarely samples such an execution.

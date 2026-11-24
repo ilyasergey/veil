@@ -329,14 +329,12 @@ partial def looksBoolean (mod : ModInfo) (stx : Syntax) : Bool :=
       let (n, fs) := qualIdParts q
       let m := fs.getLast?.getD n
       ["forall", "exists", "contains", "in", "subseteq", "not", "and", "or", "iff", "implies",
-       "isFinite", "eq", "neq", "assert"].contains m ||
-      (fs.isEmpty && ((mod.defs[n]?.map fun dcl =>
-        dcl.retType?.any isBoolType || looksBoolean mod dcl.body).getD false))
+       "isFinite", "eq", "neq", "assert"].contains m || boolDef m
     | none =>
       match dot? s[0] with
       | some (_, f) =>
         ["forall", "exists", "contains", "in", "subseteq", "not", "and", "or", "iff", "implies",
-         "isFinite", "eq", "neq"].contains f
+         "isFinite", "eq", "neq"].contains f || boolDef f
       | none => false
   else match s with
   | `(quint_expr| $_ == $_) | `(quint_expr| $_ != $_) | `(quint_expr| $_ < $_)
@@ -359,6 +357,9 @@ where
     match t with
     | `(quint_type| $q:quintQualId) => (qualIdParts q).1 == "bool"
     | _ => false
+  /-- A call of a definition of the module (`f(x)` or `x.f()`) that returns a Boolean. -/
+  boolDef (f : String) : Bool :=
+    (mod.defs[f]?.map fun dcl => dcl.retType?.any isBoolType || looksBoolean mod dcl.body).getD false
 
 /-! ## Emitting declarations -/
 

@@ -14,7 +14,11 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Quint checks this file with `quint verify --max-steps=3` (Apalache, symbolic). Veil's
+explicit-state model checker enumerates every value of a `nondet`, so it checks copies of the
+modules with smaller domains (`..._small`, described above each copy) to the same depth, and runs
+the simulator on them. `BalanceNonNegative` and `NonExistantAccountsOrCoinsAreZero` hold (the file's own
+`quint verify --max-steps=3` command).
 -/
 
 
@@ -440,6 +444,312 @@ module bankTests {
       )
     )
 }
+
+/-! ### `bankTests_small`: a copy of `bankTests` for checking
+
+The Veil checks below run on this copy, which differs from `bankTests` only by: `nondet amount = Int.oneOf()` → `nondet amount = (-1).to(2).oneOf()`.
+-/
+module bankTests_small {
+  import base.* from "./base"
+  import bank.*
+
+  /- ***************************************************************************
+   * STATE MACHINE
+   * *************************************************************************-/
+
+  var state: Accounts
+  var error: bool  -- true iff a previous bank operation has been unsuccessful
+
+  pure val Addresses : Set[Address] = Set("alice", "bob", "charlie")
+
+  pure val ATOM = toDenom("atom")
+  pure val ETH  = toDenom("eth")
+  pure val OSMO = toDenom("osmo")
+  pure val Denoms : Set[Denomination] = Set(ATOM, ETH, OSMO)
+
+  -- Trivial action defs for the bank module operations
+  action burn(sender: Address, denom: Denomination, amount: Amount): bool =
+    val result = state.BurnCoins(sender, denom, amount)
+    all {
+      state' = result.accounts,
+      error' = (error or not(result.success))
+    }
+
+  action mint(receiver: Address, denom: Denomination, amount: Amount): bool =
+    val result = state.MintCoins(receiver, denom, amount)
+    all {
+      state' = result.accounts,
+      error' = (error or not(result.success))
+    }
+
+  action transfer(sender: Address, receiver: Address,
+                  denom: Denomination, amount: Amount): bool =
+    val result = state.TransferCoins(sender, receiver, denom, amount)
+    all {
+      state' = result.accounts,
+      error' = (error or not(result.success))
+    }
+
+  /- Initialize accounts.
+   *
+   * Alice, Bob and Charlie initially hold 10 ATOMs, and no other coins.
+   -/
+  action init = all {
+    state' = Addresses.mapBy(_ => Map(ATOM -> 10)),
+    error' = false
+  }
+
+  /- Nondeterministically burn, mint, or transfer tokens of arbitrary
+   * denomination and amount to/from arbitrary accounts.
+   -/
+  action step = {
+    nondet addrA = Addresses.oneOf()
+    nondet addrB = Addresses.oneOf()
+    nondet denom = Denoms.oneOf()
+    -- since there are no assumptions about the range of amounts, this can be an arbitrary integer!
+    nondet amount = (-1).to(2).oneOf()
+    any {
+      burn(addrA, denom, amount),
+      mint(addrA, denom, amount),
+      transfer(addrA, addrB, denom, amount)
+    }
+  }
+
+  /- ***************************************************************************
+   * TESTS
+   * *************************************************************************-/
+
+  -- To run tests in the random simulator:
+  -- $ quint test --main=bankTests bank.qnt
+
+  -- A predicate that holds after `init`
+  def initialState = all {
+    -- last operation successful
+    assert(not(error)),
+    -- everybody holds 10 ATOM
+    assert(state.getBalances("alice").getBalance(ATOM) == 10),
+    assert(state.getBalances("bob").getBalance(ATOM) == 10),
+    assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+    -- nobody holds ETH
+    assert(state.getBalances("alice").getBalance(ETH) == 0),
+    assert(state.getBalances("bob").getBalance(ETH) == 0),
+    assert(state.getBalances("charlie").getBalance(ETH) == 0),
+    -- "noAccount" holds nothing
+    assert(state.getBalances("noAccount").getBalance(ATOM) == 0),
+    assert(state.getBalances("noAccount").getBalance(ETH) == 0),
+  }
+
+  -- Do some mint, burn, transfer steps and check that account balances are correct.
+  run mintTransferBurnAtomsTest = {
+    init
+      .then(all {
+        initialState,
+        -- now mint alice 15 ATOMs
+        mint("alice", ATOM, 15)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- alice received her 15 ATOM
+        assert(state.getBalances("alice").getBalance(ATOM) == 25),
+        assert(state.getBalances("bob").getBalance(ATOM) == 10),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+        -- still nobody holds ETH
+        assert(state.getBalances("alice").getBalance(ETH) == 0),
+        assert(state.getBalances("bob").getBalance(ETH) == 0),
+        assert(state.getBalances("charlie").getBalance(ETH) == 0),
+        -- "noAccount" holds nothing
+        assert(state.getBalances("noAccount").getBalance(ATOM) == 0),
+        assert(state.getBalances("noAccount").getBalance(ETH) == 0),
+
+        -- now burn bob 6 ATOMs
+        burn("bob", ATOM, 6)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- bob lost 42 ATOM
+        assert(state.getBalances("alice").getBalance(ATOM) == 25),
+        assert(state.getBalances("bob").getBalance(ATOM) == 4),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+        -- still nobody holds ETH
+        assert(state.getBalances("alice").getBalance(ETH) == 0),
+        assert(state.getBalances("bob").getBalance(ETH) == 0),
+        assert(state.getBalances("charlie").getBalance(ETH) == 0),
+        -- "noAccount" holds nothing
+        assert(state.getBalances("noAccount").getBalance(ATOM) == 0),
+        assert(state.getBalances("noAccount").getBalance(ETH) == 0),
+
+        -- now mint charlie 6 ETH
+        mint("charlie", ETH, 6)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- ATOM balances remain the same
+        assert(state.getBalances("alice").getBalance(ATOM) == 25),
+        assert(state.getBalances("bob").getBalance(ATOM) == 4),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+        -- now charlie holds 6 ETH
+        assert(state.getBalances("alice").getBalance(ETH) == 0),
+        assert(state.getBalances("bob").getBalance(ETH) == 0),
+        assert(state.getBalances("charlie").getBalance(ETH) == 6),
+        -- "noAccount" holds nothing
+        assert(state.getBalances("noAccount").getBalance(ATOM) == 0),
+        assert(state.getBalances("noAccount").getBalance(ETH) == 0),
+
+        -- now transfer 4 of charlie's ETH to bob
+        transfer("charlie", "bob", ETH, 4)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- ATOM balances remain the same
+        assert(state.getBalances("alice").getBalance(ATOM) == 25),
+        assert(state.getBalances("bob").getBalance(ATOM) == 4),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+        -- bob got 4 of charlie's ETH
+        assert(state.getBalances("alice").getBalance(ETH) == 0),
+        assert(state.getBalances("bob").getBalance(ETH) == 4),
+        assert(state.getBalances("charlie").getBalance(ETH) == 2),
+        -- "noAccount" holds nothing
+        assert(state.getBalances("noAccount").getBalance(ATOM) == 0),
+        assert(state.getBalances("noAccount").getBalance(ETH) == 0),
+
+        -- nothing changes
+        state' = state,
+        error' = error
+      })
+  }
+
+  -- Burn more coins than in account.
+  run burnOverBalanceTest = {
+    init
+      .then(all {
+        initialState,
+
+        -- now burn alice 10 ATOMs
+        burn("alice", ATOM, 10)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- alice lost 10 ATOM
+        assert(state.getBalances("alice").getBalance(ATOM) == 0),
+        assert(state.getBalances("bob").getBalance(ATOM) == 10),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+
+        -- now burn bob 11 ATOMs
+        burn("bob", ATOM, 11)
+      })
+      .then(all{
+        -- burning over balance failed
+        assert(error),
+
+        -- nothing changes
+        state' = state,
+        error' = error
+      })
+  }
+
+  -- Transfer more coins than in account.
+  run transferOverBalanceTest = {
+    init
+      .then(all {
+        initialState,
+
+        -- now transfer 10 ATOMs from alice to bob
+        transfer("alice", "bob", ATOM, 10)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- alice -- 10 ATOM --> bob
+        assert(state.getBalances("alice").getBalance(ATOM) == 0),
+        assert(state.getBalances("bob").getBalance(ATOM) == 20),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+
+        -- now transfer 21 ATOMs from bob to charlie
+        transfer("bob", "charlie", ATOM, 21)
+      })
+      .then(all{
+        -- transfer over balance failed
+        assert(error),
+
+        -- nothing changes
+        state' = state,
+        error' = error
+      })
+  }
+
+  -- Mint negative amount.
+  run mintNegativeTest = {
+    init
+      .then(all {
+        initialState,
+
+        -- now mint alice 0 ATOMs
+        mint("alice", ATOM, 0)
+      })
+      .then(all {
+        -- last operation successful
+        assert(not(error)),
+        -- balances remain
+        assert(state.getBalances("alice").getBalance(ATOM) == 10),
+        assert(state.getBalances("bob").getBalance(ATOM) == 10),
+        assert(state.getBalances("charlie").getBalance(ATOM) == 10),
+
+        -- now mint alice -1 ATOMs
+        mint("alice", ATOM, -1)
+      })
+      .then(all{
+        -- negative minting failed
+        assert(error),
+
+        -- nothing changes
+        state' = state,
+        error' = error
+      })
+  }
+
+  /- ***************************************************************************
+   * INVARIANTS
+   * *************************************************************************-/
+
+  -- To check in random simulator:
+  -- $ quint run --main=bankTests --invariant=BalanceNonNegative bank.qnt
+  -- $ quint run --main=bankTests --invariant=NonExistantAccountsOrCoinsAreZero bank.qnt
+  --
+  -- To verify in model-checker:
+  -- $ quint verify --max-steps=3 --main=bankTests --invariant=BalanceNonNegative,NonExistantAccountsOrCoinsAreZero bank.qnt
+
+  -- An invariant for `getBalances` and `getBalance`:
+  --   - Unknown accounts report 0 tokens of each denomination.
+  --   - Accounts not holding a denomination report 0 tokens.
+  val NonExistantAccountsOrCoinsAreZero =
+    Addresses.forall(addr =>
+      Denoms.forall(denom =>
+        val addrNotInAccounts = not(addr.in(state.keys()))
+        val denomNotInAccount = not(denom.in(state.get(addr).keys()))
+        (addrNotInAccounts or denomNotInAccount) implies
+          state.getBalances(addr).getBalance(denom) == 0
+      )
+    )
+
+  -- The balance of all denominations in all accounts is always non-negative.
+  val BalanceNonNegative = not(error) implies
+    Addresses.forall(addr =>
+      Denoms.forall(denom =>
+        state.getBalances(addr).getBalance(denom) >= 0
+      )
+    )
+}
+
+quint_invariant BalanceNonNegative, NonExistantAccountsOrCoinsAreZero
+#gen_spec
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end bankTests_small
 
 /-! ## Tests (`quint test`) -/
 

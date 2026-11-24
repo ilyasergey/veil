@@ -354,3 +354,7 @@ module SimpleAuction {
 
     -- TODO: add PBT-like tests
 }
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test SimpleAuction

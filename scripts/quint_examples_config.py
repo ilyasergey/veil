@@ -329,10 +329,107 @@ names; it elaborates into a namespace with its definitions.""",
     },
 }
 
-# Tests whose actions range over huge integer domains (e.g. `0.to(MAX_UINT)`), which Veil's
-# model checker enumerates (quint test samples one execution): `#quint_test` does not finish on
-# them, so it is not run.
-for _p in ['cosmos/bank/bankTest.qnt', 'cosmos/ics20/ics20.qnt', 'solidity/ERC20/erc20.qnt',
-           'solidity/icse23-fig7/lottery.qnt', 'solidity/SimpleAuction/SimpleAuction.qnt',
-           'solidity/SimplePonzi/simplePonzi.qnt', 'solidity/GradualPonzi/gradualPonzi.qnt']:
+def small(module, subs, holds=(), violated=(), depth=3, suffix='_small'):
+    """Copies of `module` with the substitutions `subs` (smaller domains), for checks like
+    `quint verify --max-steps=depth`: one copy checks the invariants `holds`, and one copy per
+    invariant of `violated` expects its violation (a model checks all its invariants together)."""
+    name = module + suffix
+    out = [(name, subs, both(name, list(holds), depth=depth))]
+    for v in violated:
+        out.append((f'{name}_{v}', subs, both(f'{name}_{v}', [v], depth=depth, violation=True)))
+    return out
+
+
+def copy_names(copies):
+    return [c[0] for cs in copies.values() for c in cs]
+
+
+SMALL_NOTE = """Quint checks this file with `quint verify --max-steps=3` (Apalache, symbolic). Veil's
+explicit-state model checker enumerates every value of a `nondet`, so it checks copies of the
+modules with smaller domains (`..._small`, described above each copy) to the same depth, and runs
+the simulator on them. """
+
+CONFIG['language-features/instances.qnt'] = {
+    'notes': """Instances of parametric modules, two of them with state (`V1`, `V2`). `inv` is
+checked to depth 3, as `quint verify --max-steps=3` does.""",
+    'tails': {'instances': both('instances', ['inv'], depth=3)},
+}
+
+_small_configs = {
+    'solidity/ERC20/erc20.qnt': ({
+        'erc20Tests': small('erc20Tests', [('pure val ADDR = Set("0", "alice", "bob", "eve")',
+                                            'pure val ADDR = Set("0", "alice", "bob")'),
+                                           ('pure val AMOUNTS = (0).to(100)', 'pure val AMOUNTS = (0).to(2)')],
+                            ['totalSupplyInv', 'zeroAddressInv', 'noOverflowsInv'])
+                      + [('erc20Tests_tiny', [('pure val ADDR = Set("0", "alice", "bob", "eve")',
+                                               'pure val ADDR = Set("0", "alice", "bob")'),
+                                              ('pure val AMOUNTS = (0).to(100)', 'pure val AMOUNTS = (0).to(1)')], '')],
+    }, """`totalSupplyInv`, `zeroAddressInv` and `noOverflowsInv` hold. `transferTest` starts in
+any state of `initArbitrary` (every map of balances and allowances), which Veil enumerates and
+`quint test` samples; it is run on `erc20Tests_tiny` (three addresses, amounts `0` and `1`)."""),
+    'solidity/SimplePonzi/simplePonzi.qnt': ({
+        'simplePonziTest': small('simplePonziTest', [('addr.mapBy(a => 10000)', 'addr.mapBy(a => 10)')],
+                                 ['noNegativeInv'], ['progressInv']),
+    }, """`noNegativeInv` holds; `progressInv` is violated, as the Quint file says."""),
+    'solidity/GradualPonzi/gradualPonzi.qnt': ({
+        'gradualPonzi': [('gradualPonzi_small', [('pure val MINIMUM_INVESTMENT = 10^15',
+                                                  'pure val MINIMUM_INVESTMENT = 1')], '')],
+        'gradualPonziTest': small('gradualPonziTest', [
+            ('import gradualPonzi(ADDR = addr).*', 'import gradualPonzi_small(ADDR = addr).*'),
+            ('100 * MINIMUM_INVESTMENT', '3 * MINIMUM_INVESTMENT'),
+            ('(-10).to(evmState.balances.get(investor) + 10)', '(-1).to(evmState.balances.get(investor) + 1)')],
+            ['noNegativeInv'], ['noBrokeInv', 'progressInv', 'noLeftoversInv']),
+    }, """`noNegativeInv` holds; `noBrokeInv`, `progressInv` and `noLeftoversInv` are violated, as
+the Quint file says (with `MINIMUM_INVESTMENT = 1`, which the file suggests for the simulator)."""),
+    'cryptography/utxo/utxo.qnt': ({
+        'utxo': small('utxo', [('amount: 100, lockingCode: "Alice"', 'amount: 3, lockingCode: "Alice"'),
+                               ('val INITIAL_SUPPLY = 100', 'val INITIAL_SUPPLY = 3'),
+                               ('(1).to(100).oneOf()', '(1).to(3).oneOf()')],
+                      ['constant_supply'], ['constant_supply_bad']),
+    }, """`constant_supply` holds; `constant_supply_bad` is violated, as the Quint file says."""),
+    'cosmos/bank/bankTest.qnt': ({
+        'bankTest': small('bankTest', [('mapBy(d => 10_000)', 'mapBy(d => 3)'),
+                                       ('(-10).to(supply.get(denom))', '(-1).to(supply.get(denom))')],
+                          [], ['totalSupplyInv']),
+    }, """`totalSupplyInv` is violated in three steps, which Quint's dashboard does not check
+(it runs `quint verify` without an invariant). `step` sends amounts from `-10` on, and
+`SendCoins` accepts a negative amount: sending `-1` burger to an account gives it a balance of
+`-1` burger, and when that account then sends another denomination, `SendCoins` keeps only the
+denominations with a positive remainder (`positiveDenoms`), so the `-1` disappears and the sum of
+the balances no longer equals the supply. The same execution exists with the file's amounts:
+from `init`, `send("king", "donkeykong", Map("banana" -> 1))`, then
+`send("king", "donkeykong", Map("burger" -> -1))`, then
+`send("donkeykong", "peaches", Map("banana" -> 1))`; Quint confirms it (`quint test` of this run
+with `assert(not(totalSupplyInv))` passes)."""),
+    'cosmos/ics20/bank.qnt': ({
+        'bankTests': small('bankTests', [('nondet amount = Int.oneOf()', 'nondet amount = (-1).to(2).oneOf()')],
+                           ['BalanceNonNegative', 'NonExistantAccountsOrCoinsAreZero']),
+    }, """`BalanceNonNegative` and `NonExistantAccountsOrCoinsAreZero` hold (the file's own
+`quint verify --max-steps=3` command)."""),
+    'cosmwasm/zero-to-hero/vote.qnt': ({
+        'state': small('state', [('Set("alice", "bob", "charlie", "eve")', 'Set("alice", "bob")'),
+                                 ('Set("p1", "p2", "p3", "p4")', 'Set("p1", "p2")'),
+                                 ('Set("q1", "q2", "q3", "q4")', 'Set("q1")'),
+                                 ('Set("o1", "o2", "o3")', 'Set("o1", "o2")')],
+                       ['alwaysAdmin'], ['invBallotsMatchPolls', 'invAllBallotsPositive'], depth=4),
+    }, """`alwaysAdmin` holds; `invBallotsMatchPolls` and `invAllBallotsPositive` are violated, as
+the Quint file says (to depth 4: the violation of `invAllBallotsPositive` needs four steps)."""),
+}
+
+for _p, (_copies, _what) in _small_configs.items():
+    _c = CONFIG.setdefault(_p, {})
+    _c.setdefault('copies', {}).update(_copies)
+    _c['notes'] = (_c.get('notes', '') + '\n\n' if 'notes' in _c else '') + SMALL_NOTE + _what
+    # the copies' tests would check values of the large instances
+    _nt = _c.get('no_tests', [])
+    if _nt is not True:
+        _c['no_tests'] = list(_nt) + copy_names(_copies)
+
+# `transferTest` enumerates every initial state of `initArbitrary`: test the tiny copy only
+_c = CONFIG['solidity/ERC20/erc20.qnt']
+_c['no_tests'] = [m for m in _c['no_tests'] if m != 'erc20Tests_tiny'] + ['erc20Tests']
+
+# Tests that Veil's model checker does not finish (it enumerates every execution of a run, where
+# quint test samples one): they are not run.
+for _p in []:
     CONFIG.setdefault(_p, {})['no_tests'] = True

@@ -10,7 +10,10 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `//`, `/* */` written `--`, `/- -/`, and `(n).f(...)` for a method on a numeral;
 `scripts/quint2veil.py` does this rewrite.
 
-The module elaborates into a Veil module; no Veil checks are configured for it.
+Quint checks this file with `quint verify --max-steps=3` (Apalache, symbolic). Veil's
+explicit-state model checker enumerates every value of a `nondet`, so it checks copies of the
+modules with smaller domains (`..._small`, described above each copy) to the same depth, and runs
+the simulator on them. `noNegativeInv` holds; `progressInv` is violated, as the Quint file says.
 -/
 
 /-*
@@ -173,3 +176,209 @@ module simplePonziTest {
     )
   }
 }
+
+/-! ### `simplePonziTest_small`: a copy of `simplePonziTest` for checking
+
+The Veil checks below run on this copy, which differs from `simplePonziTest` only by: `addr.mapBy(a => 10000)` → `addr.mapBy(a => 10)`.
+-/
+module simplePonziTest_small {
+  pure val addr = Set("alice", "bob", "charlie", "eve")
+
+  import simplePonzi(ADDR = addr) as I
+
+  export I.*
+
+  var evmState: EvmState
+  var ponziState: PonziState
+
+  -- initialize the state machine
+  action init = all {
+    -- every account has 10000 tokens initially
+    evmState' = { balances: addr.mapBy(a => 10) },
+    -- alice creates a single Ponzi contract
+    ponziState' = newPonzi("alice"),
+  }
+
+  -- When investor is sending amount tokens.
+  -- This action succeeds and updates the state of the state machine,
+  -- only if no error is returned.
+  action onReceive(investor: Addr, amount: int): bool = {
+    val result = receive(evmState, ponziState, investor, amount)
+    val { error, evm, ponzi } = result
+    all {
+      error == "",
+      evmState' = evm,
+      ponziState' = ponzi,
+    }
+  }
+
+  -- Make a single step by the state machine.
+  -- This specification is so simple that we have only one possible action.
+  action step = {
+    nondet investor = oneOf(addr)
+    -- choose the amount, picking some deltas for corner cases
+    nondet amount = (-10).to(evmState.balances.get(investor) + 10).oneOf()
+    onReceive(investor, amount)
+  }
+
+  -- A simple test to confirm our intuition.
+  -- Run in by hand in REPL, or with `quint test`:
+  --
+  -- $ quint test --main=simplePonziTest simplePonzi.qnt
+  run happyPathTest = {
+    init
+      .then(onReceive("bob", 100))
+      .then(onReceive("eve", 110))
+      .then(onReceive("alice", 121))
+      .then(all {
+        assert(ponziState.currentInvestor == "alice"),
+        assert(ponziState.currentInvestment == 121),
+        assert(evmState.balances.get("alice") == 9979),
+        assert(evmState.balances.get("eve") == 10011),
+        evmState' = evmState,
+        ponziState' = ponziState,
+      })
+  }
+
+  -- a simple test to see that smaller investments are not allowed
+  run unhappyPathTest = {
+    init
+      .then(onReceive("bob", 100))
+      .then(onReceive("eve", 105))
+      .fail()
+  }
+
+  -- Check this invariant to make sure that no account goes negative:
+  --
+  -- $ quint run --invariant=noNegativeInv --main=simplePonziTest simplePonzi.qnt
+  --
+  -- By looking at the code, do you think noNegativeInv holds true?
+  val noNegativeInv = {
+    addr.forall(a => evmState.balances.get(a) >= 0)
+  }
+
+  -- The property every Ponzi schemer believes should hold true:
+  -- There will be always another person who invests more into the game.
+  --
+  -- Check this invariant and read a counterexample:
+  --
+  -- $ quint run --invariant=progressInv --main=simplePonziTest simplePonzi.qnt
+  val progressInv = {
+    addr.exists(someone =>
+      val newAmount = (11 * ponziState.currentInvestment / 10) + 1
+      receive(evmState, ponziState, someone, newAmount).error == ""
+    )
+  }
+}
+
+quint_invariant noNegativeInv
+#gen_spec
+#quint_verify interpreted { } { } (maxDepth := 3)
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end simplePonziTest_small
+
+/-! ### `simplePonziTest_small_progressInv`: a copy of `simplePonziTest` for checking
+
+The Veil checks below run on this copy, which differs from `simplePonziTest` only by: `addr.mapBy(a => 10000)` → `addr.mapBy(a => 10)`.
+-/
+module simplePonziTest_small_progressInv {
+  pure val addr = Set("alice", "bob", "charlie", "eve")
+
+  import simplePonzi(ADDR = addr) as I
+
+  export I.*
+
+  var evmState: EvmState
+  var ponziState: PonziState
+
+  -- initialize the state machine
+  action init = all {
+    -- every account has 10000 tokens initially
+    evmState' = { balances: addr.mapBy(a => 10) },
+    -- alice creates a single Ponzi contract
+    ponziState' = newPonzi("alice"),
+  }
+
+  -- When investor is sending amount tokens.
+  -- This action succeeds and updates the state of the state machine,
+  -- only if no error is returned.
+  action onReceive(investor: Addr, amount: int): bool = {
+    val result = receive(evmState, ponziState, investor, amount)
+    val { error, evm, ponzi } = result
+    all {
+      error == "",
+      evmState' = evm,
+      ponziState' = ponzi,
+    }
+  }
+
+  -- Make a single step by the state machine.
+  -- This specification is so simple that we have only one possible action.
+  action step = {
+    nondet investor = oneOf(addr)
+    -- choose the amount, picking some deltas for corner cases
+    nondet amount = (-10).to(evmState.balances.get(investor) + 10).oneOf()
+    onReceive(investor, amount)
+  }
+
+  -- A simple test to confirm our intuition.
+  -- Run in by hand in REPL, or with `quint test`:
+  --
+  -- $ quint test --main=simplePonziTest simplePonzi.qnt
+  run happyPathTest = {
+    init
+      .then(onReceive("bob", 100))
+      .then(onReceive("eve", 110))
+      .then(onReceive("alice", 121))
+      .then(all {
+        assert(ponziState.currentInvestor == "alice"),
+        assert(ponziState.currentInvestment == 121),
+        assert(evmState.balances.get("alice") == 9979),
+        assert(evmState.balances.get("eve") == 10011),
+        evmState' = evmState,
+        ponziState' = ponziState,
+      })
+  }
+
+  -- a simple test to see that smaller investments are not allowed
+  run unhappyPathTest = {
+    init
+      .then(onReceive("bob", 100))
+      .then(onReceive("eve", 105))
+      .fail()
+  }
+
+  -- Check this invariant to make sure that no account goes negative:
+  --
+  -- $ quint run --invariant=noNegativeInv --main=simplePonziTest simplePonzi.qnt
+  --
+  -- By looking at the code, do you think noNegativeInv holds true?
+  val noNegativeInv = {
+    addr.forall(a => evmState.balances.get(a) >= 0)
+  }
+
+  -- The property every Ponzi schemer believes should hold true:
+  -- There will be always another person who invests more into the game.
+  --
+  -- Check this invariant and read a counterexample:
+  --
+  -- $ quint run --invariant=progressInv --main=simplePonziTest simplePonzi.qnt
+  val progressInv = {
+    addr.exists(someone =>
+      val newAmount = (11 * ponziState.currentInvestment / 10) + 1
+      receive(evmState, ponziState, someone, newAmount).error == ""
+    )
+  }
+}
+
+quint_invariant progressInv
+#gen_spec
+set_option veil.violationIsError false in
+#quint_verify interpreted { } { } (maxDepth := 3)
+set_option veil.violationIsError false in
+#quint_run { } { } (numTraces := 1000) (maxSteps := 20) (seed := 42)
+end simplePonziTest_small_progressInv
+
+/-! ## Tests (`quint test`) -/
+
+#quint_test simplePonziTest

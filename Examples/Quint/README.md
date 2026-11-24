@@ -145,6 +145,18 @@ backend cannot translate, as `init` is called from `step`) and of `agreement` in
 both find no violation of `consistencyInv` in the modular two-phase commit (288 states, like the
 monolithic one).
 
+On the small copies of the Solidity, Cosmos and CosmWasm examples (see the index), the
+invariants that the Quint files say hold do hold to depth 3, and those they say are violated
+(`progressInv` of both Ponzi schemes, `noBrokeInv` and `noLeftoversInv` of the gradual one,
+`constant_supply_bad` of `utxo`, the two ballot invariants of `vote`) are violated. One invariant
+that Quint's dashboard does not check is violated: `totalSupplyInv` of `cosmos/bank/bankTest.qnt`,
+in three steps, because `SendCoins` accepts negative amounts and then drops negative balances
+(the header of [Cosmos/Bank/BankTest.lean](Cosmos/Bank/BankTest.lean) has the execution). Quint
+confirms it: a `run` of these three sends from the file's initial state, ending with
+`assert(not(totalSupplyInv))`, passes `quint test` (quint 0.33.1, `--backend=typescript`, which
+`bank.qnt` needs for its 256-bit bound). `quint run` with 20,000 samples of three steps does not
+find it.
+
 ## Beyond Quint: proofs for every instance
 
 Quint's tools check one instance at a time: TLC and the simulator explore the states of fixed
@@ -207,6 +219,9 @@ TLC run of the compliance check, and the status on Quint's own
 [dashboard](https://github.com/quint-co/quint/tree/07d7a1a69c2093b5bc656caf3b5dfefa0d766cd0/examples#dashboard)
 (`quint test`, and `quint verify --max-steps=3` with Apalache). "elaborates" means that the file
 contains Quint modules without state or that are only used by other files, and no Veil check.
+"small copy" marks checks of a copy of the module with smaller domains (e.g. amounts `0..2`
+instead of `0..100`), which the file describes: Veil's explicit-state model checker enumerates
+every value of a `nondet`, where Apalache reasons about them symbolically.
 
 | Quint example | Lean file | Veil checks and results | Quint reference |
 | --- | --- | --- | --- |
@@ -231,8 +246,8 @@ contains Quint modules without state or that are only used by other files, and n
 | `classic/distributed/ewd840/ewd840.qnt` | [Classic/Distributed/Ewd840/Ewd840.lean](Classic/Distributed/Ewd840/Ewd840.lean) | ✅ model checking: 302 states | TLC `ewd840_3`: 302 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
 | `classic/sequential/BinSearch/BinSearch.qnt` | [Classic/Sequential/BinSearch/BinSearch.lean](Classic/Sequential/BinSearch/BinSearch.lean) | ✅ model checking: 5 states | TLC `BinSearch10`: 5 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
 | `cosmos/bank/bank.qnt` | [Cosmos/Bank/Bank.lean](Cosmos/Bank/Bank.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
-| `cosmos/bank/bankTest.qnt` | [Cosmos/Bank/BankTest.lean](Cosmos/Bank/BankTest.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
-| `cosmos/ics20/bank.qnt` | [Cosmos/Ics20/Bank.lean](Cosmos/Ics20/Bank.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
+| `cosmos/bank/bankTest.qnt` | [Cosmos/Bank/BankTest.lean](Cosmos/Bank/BankTest.lean) | small copy: ✅ model checking, depth ≤ 3: 25,078 states<br>✅ simulation: 1000 traces<br>❌ model checking, depth ≤ 3: violates totalSupplyInv (expected) (see the file)<br>✅ `quint test`: 2 passing | Quint dashboard: test ✅, Apalache verify ✅ |
+| `cosmos/ics20/bank.qnt` | [Cosmos/Ics20/Bank.lean](Cosmos/Ics20/Bank.lean) | small copy: ✅ model checking, depth ≤ 3: 96,347 states<br>✅ simulation: 1000 traces<br>✅ `quint test`: 4 passing | Quint dashboard: test ✅, Apalache verify ✅ |
 | `cosmos/ics20/base.qnt` | [Cosmos/Ics20/Base.lean](Cosmos/Ics20/Base.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
 | `cosmos/ics20/denomTrace.qnt` | [Cosmos/Ics20/DenomTrace.lean](Cosmos/Ics20/DenomTrace.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
 | `cosmos/ics20/ics20.qnt` | [Cosmos/Ics20/Ics20.lean](Cosmos/Ics20/Ics20.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
@@ -244,10 +259,10 @@ contains Quint modules without state or that are only used by other files, and n
 | `cosmos/tendermint/Tendermint.qnt` | [Cosmos/Tendermint/Tendermint.lean](Cosmos/Tendermint/Tendermint.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
 | `cosmos/tendermint/TendermintModels.qnt` | [Cosmos/Tendermint/TendermintModels.lean](Cosmos/Tendermint/TendermintModels.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
 | `cosmos/tendermint/TendermintTest.qnt` | [Cosmos/Tendermint/TendermintTest.lean](Cosmos/Tendermint/TendermintTest.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
-| `cosmwasm/zero-to-hero/vote.qnt` | [Cosmwasm/ZeroToHero/Vote.lean](Cosmwasm/ZeroToHero/Vote.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ✅ |
+| `cosmwasm/zero-to-hero/vote.qnt` | [Cosmwasm/ZeroToHero/Vote.lean](Cosmwasm/ZeroToHero/Vote.lean) | small copy: ✅ model checking, depth ≤ 4: 23,185 states<br>✅ simulation: 1000 traces<br>❌ model checking, depth ≤ 4: violates invBallotsMatchPolls (expected)<br>❌ model checking, depth ≤ 4: violates invAllBallotsPositive (expected) | Quint dashboard: test N/A, Apalache verify ✅ |
 | `cryptography/hashes/hashes.qnt` | [Cryptography/Hashes/Hashes.lean](Cryptography/Hashes/Hashes.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
 | `cryptography/hashes/hashesTest.qnt` | [Cryptography/Hashes/HashesTest.lean](Cryptography/Hashes/HashesTest.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
-| `cryptography/utxo/utxo.qnt` | [Cryptography/Utxo/Utxo.lean](Cryptography/Utxo/Utxo.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
+| `cryptography/utxo/utxo.qnt` | [Cryptography/Utxo/Utxo.lean](Cryptography/Utxo/Utxo.lean) | small copy: ✅ model checking, depth ≤ 3: 111,151 states<br>✅ simulation: 1000 traces<br>❌ model checking, depth ≤ 3: violates constant_supply_bad (expected) | Quint dashboard: test ✅, Apalache verify ✅ |
 | `games/mafia_werewolf/play_mafia.qnt` | [Games/MafiaWerewolf/PlayMafia.lean](Games/MafiaWerewolf/PlayMafia.lean) | ❌ model checking, depth ≤ 3: violates correct_game_status (expected)<br>❌ simulation: violates correct_game_status (expected) | Quint dashboard: test N/A, Apalache verify ✅ |
 | `games/rock_paper_scissors/play_rock_paper_scissors.qnt` | [Games/RockPaperScissors/PlayRockPaperScissors.lean](Games/RockPaperScissors/PlayRockPaperScissors.lean) | ✅ model checking: 19 states | TLC `rock_paper_scissors`: 19 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
 | `games/secret-santa/secret_santa.qnt` | [Games/SecretSanta/SecretSanta.lean](Games/SecretSanta/SecretSanta.lean) | ❌ model checking: violates inv (expected) | TLC `secret_santa`: violated<br>Quint dashboard: test N/A, Apalache verify ✅ |
@@ -257,7 +272,7 @@ contains Quint modules without state or that are only used by other files, and n
 | `language-features/generate.qnt` | [LanguageFeatures/Generate.lean](LanguageFeatures/Generate.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ✅ |
 | `language-features/importFrom.qnt` | [LanguageFeatures/ImportFrom.lean](LanguageFeatures/ImportFrom.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
 | `language-features/imports.qnt` | [LanguageFeatures/Imports.lean](LanguageFeatures/Imports.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ✅ |
-| `language-features/instances.qnt` | [LanguageFeatures/Instances.lean](LanguageFeatures/Instances.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ✅ |
+| `language-features/instances.qnt` | [LanguageFeatures/Instances.lean](LanguageFeatures/Instances.lean) | ✅ model checking, depth ≤ 3: 5 states<br>✅ simulation: 1000 traces | Quint dashboard: test N/A, Apalache verify ✅ |
 | `language-features/instancesFrom.qnt` | [LanguageFeatures/InstancesFrom.lean](LanguageFeatures/InstancesFrom.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ✅ |
 | `language-features/integers.qnt` | [LanguageFeatures/Integers.lean](LanguageFeatures/Integers.lean) | ✅ model checking, depth ≤ 3: 5 states<br>✅ simulation: 1000 traces | Quint dashboard: test N/A, Apalache verify ✅ |
 | `language-features/lists.qnt` | [LanguageFeatures/Lists.lean](LanguageFeatures/Lists.lean) | ✅ model checking, depth ≤ 3: 1 states<br>✅ simulation: 1000 traces | Quint dashboard: test N/A, Apalache verify ✅ |
@@ -271,13 +286,13 @@ contains Quint modules without state or that are only used by other files, and n
 | `language-features/weakFairness.qnt` | [LanguageFeatures/WeakFairness.lean](LanguageFeatures/WeakFairness.lean) | ✅ model checking: 2 states<br>✅ temporal: (checked 2 properties, explored 6 product states)<br>❌ temporal: Violation: liveness_failure (violates: notDoneLeadsToDoneNoFairness) | TLC `weakFairness`: 2 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
 | `puzzles/prisoners/prisoners.qnt` | [Puzzles/Prisoners/Prisoners.lean](Puzzles/Prisoners/Prisoners.lean) | ✅ model checking: 70 states | TLC `prisoners3`: 70 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
 | `puzzles/river/river.qnt` | [Puzzles/River/River.lean](Puzzles/River/River.lean) | ✅ model checking: 20 states | TLC `river`: 20 states, holds<br>Quint dashboard: test N/A, Apalache verify ✅ |
-| `solidity/ERC20/erc20.qnt` | [Solidity/ERC20/Erc20.lean](Solidity/ERC20/Erc20.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
-| `solidity/GradualPonzi/gradualPonzi.qnt` | [Solidity/GradualPonzi/GradualPonzi.lean](Solidity/GradualPonzi/GradualPonzi.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
-| `solidity/SimpleAuction/SimpleAuction.qnt` | [Solidity/SimpleAuction/SimpleAuction.lean](Solidity/SimpleAuction/SimpleAuction.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
-| `solidity/SimplePonzi/simplePonzi.qnt` | [Solidity/SimplePonzi/SimplePonzi.lean](Solidity/SimplePonzi/SimplePonzi.lean) | elaborates | Quint dashboard: test ✅, Apalache verify ✅ |
-| `solidity/icse23-fig7/lottery.qnt` | [Solidity/Icse23Fig7/Lottery.lean](Solidity/Icse23Fig7/Lottery.lean) | elaborates | Quint dashboard: test N/A, Apalache verify ❌ |
+| `solidity/ERC20/erc20.qnt` | [Solidity/ERC20/Erc20.lean](Solidity/ERC20/Erc20.lean) | small copy: ✅ model checking, depth ≤ 3: 876 states<br>✅ simulation: 1000 traces<br>✅ `quint test`: 2 passing (`transferTest` on the tiny copy: 290,816 states) | Quint dashboard: test ✅, Apalache verify ✅ |
+| `solidity/GradualPonzi/gradualPonzi.qnt` | [Solidity/GradualPonzi/GradualPonzi.lean](Solidity/GradualPonzi/GradualPonzi.lean) | small copy: ✅ model checking, depth ≤ 3: 10,370 states<br>✅ simulation: 1000 traces<br>❌ model checking, depth ≤ 3: violates noBrokeInv (expected)<br>❌ model checking, depth ≤ 3: violates progressInv (expected)<br>❌ model checking, depth ≤ 3: violates noLeftoversInv (expected)<br>✅ `quint test`: 3 passing | Quint dashboard: test ✅, Apalache verify ✅ |
+| `solidity/SimpleAuction/SimpleAuction.qnt` | [Solidity/SimpleAuction/SimpleAuction.lean](Solidity/SimpleAuction/SimpleAuction.lean) | ✅ `quint test`: 3 passing | Quint dashboard: test ✅, Apalache verify N/A |
+| `solidity/SimplePonzi/simplePonzi.qnt` | [Solidity/SimplePonzi/SimplePonzi.lean](Solidity/SimplePonzi/SimplePonzi.lean) | small copy: ✅ model checking, depth ≤ 3: 9,413 states<br>✅ simulation: 1000 traces<br>❌ model checking, depth ≤ 3: violates progressInv (expected)<br>✅ `quint test`: 2 passing | Quint dashboard: test ✅, Apalache verify ✅ |
+| `solidity/icse23-fig7/lottery.qnt` | [Solidity/Icse23Fig7/Lottery.lean](Solidity/Icse23Fig7/Lottery.lean) | ✅ `quint test`: 3 passing | Quint dashboard: test N/A, Apalache verify ❌ |
 | `spells/BoundedUInt.qnt` | [Spells/BoundedUInt.lean](Spells/BoundedUInt.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
-| `spells/basicSpells.qnt` | [Spells/BasicSpells.lean](Spells/BasicSpells.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
+| `spells/basicSpells.qnt` | [Spells/BasicSpells.lean](Spells/BasicSpells.lean) | ✅ `quint test`: 23 passing | Quint dashboard: test ✅, Apalache verify N/A |
 | `spells/commonSpells.qnt` | [Spells/CommonSpells.lean](Spells/CommonSpells.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
 | `spells/rareSpells.qnt` | [Spells/RareSpells.lean](Spells/RareSpells.lean) | elaborates | Quint dashboard: test ✅, Apalache verify N/A |
 | `tutorials/booleans.qnt` | [Tutorials/Booleans.lean](Tutorials/Booleans.lean) | elaborates | Quint dashboard: test N/A, Apalache verify N/A |
@@ -294,10 +309,13 @@ contains Quint modules without state or that are only used by other files, and n
   passes in Quint can therefore fail in Veil (e.g. `consensusRunTest` of `properValues`). Runs
   may bind `nondet` and `val` values, branch with `if`, end with `fail()`, and repeat steps a
   constant number of times; the tests of instances (`import M(...) as I`) run as `I::test`. A
-  `val` bound before the steps is re-evaluated in each step (Quint evaluates it once). Not run:
-  the tests of the Solidity and Cosmos bank/ICS20 examples, whose actions range over huge integer
-  domains, those of Tendermint, whose actions do not elaborate within Lean's default heartbeat
-  limit, and those of the eight-process k-set agreement instances (their small copies are tested).
+  `val` bound before the steps is re-evaluated in each step (Quint evaluates it once). A run may
+  call other runs, also inside `all { ... }` (the other conjuncts guard the first step). As with
+  `quint test`, the tests of a module are its own runs and those of the modules it imports
+  directly. A test that starts in every state of a large domain is run on a smaller copy (ERC20's
+  `transferTest`). Not run: the tests of Tendermint, whose actions do not elaborate within Lean's
+  default heartbeat limit, and those of the eight-process k-set agreement instances (their small
+  copies are tested).
 - Temporal properties with `orKeep` or `next` (action properties), or with fairness of an action
   with parameters, are not translated; the frontend reports each one.
 - `quint_bmc` does not translate maps, nor the set operators `map`, `filter`, `fold` and
