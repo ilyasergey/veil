@@ -4,7 +4,10 @@
 # Usage: scripts/quint_capped.sh FILE.lean [SECONDS=120] [THREADS=4]
 cd "$(dirname "$0")/.."
 f=$1; cap=${2:-120}; threads=${3:-4}
-LEAN_NUM_THREADS=$threads nice -n 10 lake env lean "$f" &
+# cvc5's native library, for commands that call the solver in-process (as `lake build` does)
+dyn=.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.dylib
+[ -f "$dyn" ] || dyn=.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.so
+LEAN_NUM_THREADS=$threads nice -n 10 lake env lean ${dyn:+--load-dynlib="$dyn"} "$f" &
 pid=$!
 ( sleep "$cap"; pkill -9 -f "lean $f" && echo "KILLED after ${cap}s: $f" >&2 ) 2>/dev/null &
 wd=$!

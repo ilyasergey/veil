@@ -88,6 +88,50 @@ def mc(module, invariants=(), inst='{ }', theory='{ }', opts='', extra='', end=T
     return s
 
 
+WF_GHOSTS = """ghost relation isDone := done = true
+ghost relation notDone := done = false
+"""
+
+WF_PROOFS = """
+/-! ### Proofs of the two liveness properties (for every execution, by WF1) -/
+
+open Lentil
+
+temporal (only := verify) [notDoneLeadsToDoneProof]
+  𝒲ℱ finish → (⌜ notDone ⌝ ↝ ⌜ isDone ⌝)
+
+prove_temporal_by [notDoneLeadsToDoneProof]
+  -- hInit : ⌜ Init ⌝, hNext : □⟨ NextStep ⟩, hInv : □⌜ Invariants ⌝
+  tclear hInit hInv
+  tintro hwf
+  -- WF1 with p = notDone, q = isDone, a = finish
+  trevert hNext hwf ; trewrite [← Lentil.and_imp]
+  tapply wf1_original
+  tsplit_ands
+  -- (1) notDone is stable until isDone, (2) a `finish` step establishes isDone,
+  -- (3) `finish` is enabled while notDone: each is about one transition
+  all_goals tmonotone ; veil_solve_temporal
+
+temporal (only := verify) [eventuallyDoneProof] 𝒲ℱ finish → ◇ ⌜ isDone ⌝
+
+prove_temporal_by [eventuallyDoneProof]
+  tclear hInv
+  tintro hwf
+  -- it suffices that notDone leads to isDone, since notDone holds initially
+  tsuffices hleadsto :
+   ⌜fun st => (veil_term% notDone) st⌝ ↝ ⌜fun st => (veil_term% isDone) st⌝ by
+    tunfold leads_to at hleadsto
+    thave himp := always_weaken hleadsto
+    tapply himp
+    tclear *- hInit
+    veil_solve_temporal
+  tclear hInit
+  trevert hNext hwf ; trewrite [← Lentil.and_imp]
+  tapply wf1_original
+  tsplit_ands
+  all_goals tmonotone ; veil_solve_temporal
+"""
+
 CONFIG = {
     'classic/distributed/TwoPhaseCommit/two_phase_commit.qnt': {
         'notes': """Two-phase commit (Lamport's TwoPhase). Checked with Veil's explicit-state
@@ -254,7 +298,27 @@ and the transaction manager.""",
     },
     'classic/distributed/Paxos/Voting.qnt': {
         'notes': """The voting algorithm underlying Paxos; it is parameterized by constants and
-instantiated by `Paxos.qnt`.""",
+instantiated by `Paxos.qnt`. Quint's tools do not check it (`Ballot = Nat` makes the state space
+infinite, and the module has no instance). The instance `Voting_val2_accept3` below has two
+values, three acceptors, the three two-element quorums and ballots 0 to 2. Veil's model checker
+checks on it the invariant `Inv` of the source (the TLA+ theorem `Invariance`), the properties
+`OneVote` and `ShowsSafety` that the source states as theorems, and `Agreement` (at most one
+value is chosen), which is the safety property of consensus that `Inv` is meant to imply.""",
+        'pre': {'Voting': INIT_NEXT + 'set_option quint.skipParametric true\n'},
+        'footer': """/-! ## An instance for model checking -/
+
+module Voting_val2_accept3 {
+  import Voting(
+    Value = Set(0, 1),
+    Acceptor = Set("a1", "a2", "a3"),
+    Quorum = Set(Set("a1", "a2"), Set("a1", "a3"), Set("a2", "a3")),
+    Ballot = (0).to(2)
+  ).*
+
+  -- at most one value is chosen
+  val Agreement = chosen.size() <= 1
+}
+""" + mc('Voting_val2_accept3', ['Inv', 'OneVote', 'ShowsSafety', 'Agreement']),
     },
     'games/tictactoe/tictactoe.qnt': {
         'notes': """Tic-tac-toe with a strategy for X. `NotStalemate` is violated (the game can
@@ -313,9 +377,15 @@ up to three steps.""",
 (`quint verify --backend tlc --temporal ...`); the frontend translates them into Veil's temporal
 logic (`weakFair(finish, vars)` is `𝒲ℱ finish`, `p leadsTo q` is `p ↝ q`), and `#quint_temporal`
 checks them with Lasso, Veil's verified LTL model checker. As with TLC, the property without
-fairness fails (the system may take `noop` forever).""",
-        'tails': {'weakFairness': mc('weakFairness', end=False) + temporal(
-            ['eventuallyDone', 'notDoneLeadsToDone'], ['notDoneLeadsToDoneNoFairness']) + 'end weakFairness\n'}},
+fairness fails (the system may take `noop` forever).
+
+Beyond model checking, the two properties that hold are proved deductively with Veil's temporal
+proof mode (`prove_temporal_by`), by the rule WF1 of TLA: `not(done)` is stable until `done`, a
+`finish` step establishes `done`, and `finish` is enabled while `not(done)`. The three premises
+are first-order and discharged by SMT. The SMT answers are trusted (`veil.smt.trust`, Veil's
+default); with proof reconstruction cvc5 currently rejects the query.""",
+        'tails': {'weakFairness': WF_GHOSTS + mc('weakFairness', end=False) + temporal(
+            ['eventuallyDone', 'notDoneLeadsToDone'], ['notDoneLeadsToDoneNoFairness']) + WF_PROOFS + 'end weakFairness\n'}},
     'language-features/strongFairness.qnt': {
         'notes': """Strong fairness. `weakFair(step, vars)` is fairness of the whole step, which
 the frontend splits into one Veil action per branch: it becomes weak fairness of their

@@ -11,9 +11,17 @@ Source: https://github.com/quint-co/quint/blob/07d7a1a69c2093b5bc656caf3b5dfefa0
 `scripts/quint2veil.py` does this rewrite.
 
 The voting algorithm underlying Paxos; it is parameterized by constants and
-instantiated by `Paxos.qnt`.
+instantiated by `Paxos.qnt`. Quint's tools do not check it (`Ballot = Nat` makes the state space
+infinite, and the module has no instance). The instance `Voting_val2_accept3` below has two
+values, three acceptors, the three two-element quorums and ballots 0 to 2. Veil's model checker
+checks on it the invariant `Inv` of the source (the TLA+ theorem `Invariance`), the properties
+`OneVote` and `ShowsSafety` that the source states as theorems, and `Agreement` (at most one
+value is chosen), which is the safety property of consensus that `Inv` is meant to imply.
 -/
 
+set_option quint.init "Init"
+set_option quint.step "Next"
+set_option quint.skipParametric true
 module Voting {
 /-**************************************************************************)
 (* This is a high-level algorithm in which a set of processes              *)
@@ -259,3 +267,21 @@ THEOREM Spec => C!Spec
  -/
 
 }
+
+/-! ## An instance for model checking -/
+
+module Voting_val2_accept3 {
+  import Voting(
+    Value = Set(0, 1),
+    Acceptor = Set("a1", "a2", "a3"),
+    Quorum = Set(Set("a1", "a2"), Set("a1", "a3"), Set("a2", "a3")),
+    Ballot = (0).to(2)
+  ).*
+
+  -- at most one value is chosen
+  val Agreement = chosen.size() <= 1
+}
+quint_invariant Inv, OneVote, ShowsSafety, Agreement
+#gen_spec
+#quint_verify interpreted { } { }
+end Voting_val2_accept3
