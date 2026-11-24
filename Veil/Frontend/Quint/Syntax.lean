@@ -64,7 +64,7 @@ syntax quintMatchCase := quintMatchPat " => " quint_expr
 
 syntax quintQualifier :=
     &"val" <|> "def" <|> (&"pure" (&"val" <|> "def")) <|> &"action" <|> &"run"
-  <|> &"temporal" <|> &"nondet"
+  <|> &"temporal" <|> &"nondet" <|> &"invariant" <|> &"observation"
 
 /-- An operator definition `qualifier name(params): T = e`. -/
 syntax quintOperDef :=

@@ -61,6 +61,12 @@ register_option quint.lenient : Bool := {
   descr := "report Quint actions and definitions that fail to elaborate as warnings and skip them"
 }
 
+register_option quint.declaredInvariants : Bool := {
+  defValue := true
+  descr := "check the `invariant` definitions of a Quint module (as `quint run`/`quint verify` do \
+    unless `--no-invariant` or `--invariant` is given)"
+}
+
 register_option quint.step : String := {
   defValue := "step"
   descr := "the name of the Quint action that defines the transitions"
@@ -85,6 +91,14 @@ initialize quintRecordExt : SimplePersistentEnvExtension (String × Name) (Std.H
 /-- Zero-argument boolean `val`s of each Veil module, kept for `quint_invariant`:
 module name and val name to the Lean term of its body. -/
 initialize quintInvCandidateExt : EnvExtension (Std.HashMap (Name × String) Syntax) ←
+  registerEnvExtension (pure {})
+
+/-- The Quint definitions of each Veil module that are already Veil invariants. -/
+initialize quintDeclaredInvExt : EnvExtension (Std.HashSet (Name × String)) ←
+  registerEnvExtension (pure {})
+
+/-- The `observation` definitions of each Veil module, in source order. -/
+initialize quintObservationExt : EnvExtension (Std.HashMap Name (Array String)) ←
   registerEnvExtension (pure {})
 
 /-! ## Names -/
@@ -143,6 +157,9 @@ structure QDef where
   retType? : Option Syntax
   body : Syntax
   ref : Syntax
+  /-- `"invariant"` or `"observation"` for a `val` declared with that qualifier (Quint 0.34),
+  which `quint run` and `quint verify` collect by name; `""` otherwise. -/
+  role : String := ""
 deriving Inhabited
 
 /-- How references to a definition are translated. -/
@@ -983,6 +1000,17 @@ partial def trBuiltin (name : String) (pre : Array Term) (args : Array Syntax)
     | #[a, b] => `(($a, $b))
     | #[a, b, c] => `(Quint.Tuple.Tup3.mk $a $b $c)
     | _ => throwError "`Tup` with {ts.size} components is not supported"
+  | "Rec", _ => do
+    -- `Rec("f", e, "g", e')` is the record `{ f: e, g: e' }`
+    if args.size % 2 != 0 then throwError "`Rec` expects pairs of a field name and a value"
+    let mut fields : Array (String × Syntax) := #[]
+    for i in [0:args.size / 2] do
+      let some f := strLitOf? args[2 * i]! | throwError "`Rec` expects string literals as field names"
+      fields := fields.push (f, args[2 * i + 1]!)
+    let sorted := fields.qsort (fun a b => a.1 < b.1)
+    let rname ← liftM (m := CommandElabM) <| ensureRecord (sorted.map (·.1))
+    let vals ← sorted.mapM (trExpr ·.2)
+    `($(mkIdent (rname ++ `mk)) $vals*)
   | "q::debug", 2 => arg 1
   | _, _ =>
     -- an unknown operator: apply the Lean function of that name
@@ -1008,6 +1036,7 @@ partial def parseOperDef (dd : Syntax) : QDef :=
     | "run" => .run
     | "temporal" => .temporal
     | "nondet" => .nondet
+    | "invariant" | "observation" => .val
     | _ =>
       -- `&"pure" (&"val" <|> "def")` produces a group
       if a.getNumArgs == 2 then
@@ -1015,6 +1044,11 @@ partial def parseOperDef (dd : Syntax) : QDef :=
         let t := if t.isAtom then t.getAtomVal else t.getId.toString
         if t == "val" then .pureVal else .pureDef
       else .val
+  let role :=
+    let a := qual[0]
+    let s := if a.isAtom then a.getAtomVal else if a.isIdent then a.getId.toString else
+      (a[0].getAtomVal)
+    if s == "invariant" || s == "observation" then s else ""
   let (name, _) := qualIdParts dd[1]
   let paramsOpt := dd[2]
   let params : Option (Array QParam) :=
@@ -1023,7 +1057,7 @@ partial def parseOperDef (dd : Syntax) : QDef :=
       { name := paramName p[0], type? := if p[1].getNumArgs > 0 then some p[1][1] else none }
   let retType? := if dd[3].getNumArgs > 0 then some dd[3][1] else none
   let body := if dd[4].getNumArgs > 0 then dd[4][1] else Syntax.missing
-  { kind, name, params, retType?, body, ref := dd }
+  { kind, name, params, retType?, body, ref := dd, role }
 
 end
 

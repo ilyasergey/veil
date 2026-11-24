@@ -66,7 +66,11 @@ def convert(src: str) -> str:
 def main():
     path = sys.argv[1]
     with open(path) as f:
-        text = convert(f.read())
+        src = f.read()
+    # a shebang line (`#!/usr/bin/env -S quint ...`) becomes a comment
+    if src.startswith("#!"):
+        src = "//" + src[2:]
+    text = convert(src)
     if '--lean' in sys.argv:
         print("module\n\npublic import Veil.Quint\n")
     print(text)

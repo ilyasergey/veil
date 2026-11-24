@@ -387,7 +387,16 @@ partial def recordFieldSets (stx : Syntax) (acc : Array (Array String) := #[]) :
       else acc.push (elems.map fun e =>
         let e' := if e.getNumArgs == 1 then e[0] else e
         identStr e'[0])
-    | _ => acc
+    | _ =>
+      -- `Rec("f", e, "g", e')`
+      let isRec := isApp stx && (match asQualId? stx[0] with
+        | some q => qualIdParts q == ("Rec", [])
+        | none => false)
+      if isRec then
+        let args := sepArgs stx[2]
+        let names := (List.range (args.size / 2)).toArray.filterMap fun i => strLitOf? args[2 * i]!
+        if names.size * 2 == args.size then acc.push names else acc
+      else acc
   stx.getArgs.foldl (fun acc a => recordFieldSets a acc) acc
 
 /-- Type declarations with the types they refer to first. -/
@@ -905,6 +914,28 @@ def elabQuintModuleCore (stx : Syntax) : CommandElabM Unit := do
       catch ex => logWarningAt qd.ref m!"`{qd.name}` cannot be used as an invariant: {ex.toMessageData}"
   let _ := invCandidates
   modifyEnv (quintInvCandidateExt.setState · cands)
+  -- `invariant` and `observation` definitions (Quint 0.34): those of this module and of its
+  -- unqualified imports are collected; the invariants are checked unless switched off
+  if isVeil then
+    let collected := c.defOrder.filterMap fun n => match mod.defs[n]? with
+      | some qd => if qd.role != "" && (n.splitOn "::").length == 1 then some qd else none
+      | none => none
+    let obs := collected.filter (·.role == "observation") |>.map (·.name)
+    unless obs.isEmpty do modifyEnv (quintObservationExt.modifyState · (·.insert modName obs))
+    if quint.declaredInvariants.get (← getOptions) then
+      for qd in collected do
+        unless qd.role == "invariant" do continue
+        let some t := cands[(modName, qd.name)]?
+          | logWarningAt qd.ref m!"invariant `{qd.name}` is not checked: it is not a boolean definition without parameters"
+        let t : Term := ⟨t⟩
+        let nid := mkIdentFrom qd.ref (Name.mkSimple (leanStr qd.name))
+        try
+          discard <| withRef qd.ref <| elabGenerated s!"invariant `{qd.name}`" (← `(command| invariant [$nid] $t))
+          modifyEnv (quintDeclaredInvExt.modifyState · (·.insert (modName, qd.name)))
+        catch ex =>
+          if quint.lenient.get (← getOptions) then
+            logWarningAt qd.ref m!"invariant `{qd.name}` is skipped (quint.lenient): {ex.toMessageData}"
+          else throw ex
   for qd in mod.defs.values do
     trace[veil.debug] m!"def {qd.name}: kind {repr qd.kind}, params {qd.params.map (·.size)}, bool {looksBoolean mod qd.body}, body kind {(unwrap qd.body).getKind} / {(unwrap qd.body)[0].getKind}"
 
@@ -922,9 +953,12 @@ syntax (name := quintInvariantCmd) "quint_invariant " quint_ident,+ : command
     let n := identStr id
     let some t := cands[(modName, n)]?
       | throwErrorAt id "`{n}` is not a boolean `val` of the Quint module `{modName}`"
+    -- an `invariant` definition is a Veil invariant already
+    if (quintDeclaredInvExt.getState (← getEnv)).contains (modName, n) then continue
     let t : Term := ⟨t⟩
     let nid := mkIdentFrom id (Name.mkSimple (leanStr n))
     withRef id <| elabCommand (← `(command| invariant [$nid] $t))
+    modifyEnv (quintDeclaredInvExt.modifyState · (·.insert (modName, n)))
 
 end Veil.Quint
 

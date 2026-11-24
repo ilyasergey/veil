@@ -29,6 +29,9 @@ as they are in Quint.
 | `pure def f(x: T)...` | a Lean `def` |
 | `def`/`val` reading state, with typed parameters | `ghost function` / `ghost relation` |
 | boolean `val` without parameters | inlined; `quint_invariant v` / `quint_constraint v` |
+| `invariant v = e` (Quint 0.34) | a Veil `invariant [v]`, checked without `quint_invariant`; `set_option quint.declaredInvariants false` before the module is `--no-invariant` |
+| `observation o = e` (Quint 0.34) | a boolean `val`, recorded as an observation of the module |
+| `Rec("f", e, "g", e')` | the record `{ f: e, g: e' }` |
 | definitions with untyped parameters | inlined at each use |
 | `action init` (or `quint.init`) | `after_init` |
 | `action step` (or `quint.step`) | one Veil `action` per branch of its top-level `any` |
