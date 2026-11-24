@@ -203,10 +203,13 @@ def generate(quint: str, only=None):
             no_tests = cfg.get('no_tests', [])
             tested = [m for m in tested if not (no_tests is True or m in no_tests)]
             pats = cfg.get('test_patterns', {})
+            # modules with a test that fails in Veil, as documented in the notes: reported, not an error
+            failing_ok = cfg.get('tests_expect_failure', [])
             if tested:
                 footer = (footer.rstrip() + '\n\n' if footer else '') + \
                     '/-! ## Tests (`quint test`) -/\n\n' + '\n'.join(
-                        f'#quint_test {m}' + (f' "{pats[m]}"' if m in pats else '') for m in tested) + '\n'
+                        ('set_option veil.violationIsError false in\n' if m in failing_ok else '')
+                        + f'#quint_test {m}' + (f' "{pats[m]}"' if m in pats else '') for m in tested) + '\n'
 
             out_path = os.path.join(OUT, lean_rel(rel))
             os.makedirs(os.path.dirname(out_path), exist_ok=True)

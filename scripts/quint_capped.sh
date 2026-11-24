@@ -7,9 +7,13 @@ f=$1; cap=${2:-120}; threads=${3:-4}
 # cvc5's native library, for commands that call the solver in-process (as `lake build` does)
 dyn=.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.dylib
 [ -f "$dyn" ] || dyn=.lake/packages/cvc5/.lake/build/lib/libcvc5_cvc5.so
+[ -f "$dyn" ] || dyn=
+# job control: the job gets its own process group, which the watchdog kills as a whole
+set -m
 LEAN_NUM_THREADS=$threads nice -n 10 lake env lean ${dyn:+--load-dynlib="$dyn"} "$f" &
 pid=$!
-( sleep "$cap"; pkill -9 -f "lean $f" && echo "KILLED after ${cap}s: $f" >&2 ) 2>/dev/null &
+set +m
+( sleep "$cap"; kill -9 -- "-$pid" 2>/dev/null && echo "KILLED after ${cap}s: $f" >&2 ) &
 wd=$!
 wait $pid; code=$?
 kill $wd 2>/dev/null; pkill -P $wd 2>/dev/null

@@ -101,6 +101,11 @@ A property that is expected to fail (as Quint's own comments say) is checked wit
 `set_option veil.violationIsError false in`, so that the violation is reported without failing
 the build.
 
+`#quint_test` reports a failing run as an error, as `quint test` fails: at the `run` definition
+(when it is in the same file) and at the `#quint_test` command. The error names the expectation
+that does not hold and shows an execution that violates it, in the format above. A run that is
+expected to fail in Veil is tested under `set_option veil.violationIsError false in` as well.
+
 ## Agreement with Quint
 
 [scripts/quint_compliance.py](../../scripts/quint_compliance.py) runs Quint's TLC backend

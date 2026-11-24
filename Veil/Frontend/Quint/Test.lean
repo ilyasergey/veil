@@ -355,8 +355,20 @@ def elabQuietString (src : String) : CommandElabM MessageLog := do
 /-- The outcome of one run. -/
 inductive RunOutcome where
   | passed (states : Nat)
-  | failed (why : String)
+  /-- `execution` is a failing execution in Quint's format, when there is one -/
+  | failed (why : String) (execution : String := "")
   | notChecked (why : String)
+
+/-- A failing execution of a test module, in Quint's format, without the step counter; and the
+value of the step counter in its last state. -/
+def runTrace (testName : String) (veilMsg : String) : CommandElabM (String × Option Nat) := do
+  let states := parseStates veilMsg
+  if states.isEmpty then return ("", none)
+  let pc := states.back?.bind fun st =>
+    (st.fields.find? (·.1 == "quint_pc")).bind fun (_, v) => v.trimAscii.toString.toNat?
+  let states := states.map fun st => { st with fields := st.fields.filter (·.1 != "quint_pc") }
+  let vars := (quintVarsExt.getState (← getEnv))[Name.mkSimple (leanStr testName)]?.getD #[]
+  return (renderStates vars states, pc)
 
 /-- Check one run, on a test module with this `import`. -/
 def checkRun (header testName : String) (env : TyEnv) (consts : Std.HashMap String Syntax)
@@ -399,9 +411,17 @@ def checkRun (header testName : String) (env : TyEnv) (consts : Std.HashMap Stri
     if r1.contains '❌' then
       let _ ← elabQuietString s!"end {leanStr testName}"
       modifyEnv (quintOpenModuleExt.setState · none)
-      let what := if (r1.splitOn "assertion").length > 1 then "an assertion fails"
-        else "an expectation does not hold"
-      return .failed s!"on some execution, {what}"
+      let (execution, pc?) ← runTrace testName r1
+      -- the expectations checked at the step where the execution stops
+      let failed := match pc? with
+        | some k => cfg.expects.filterMap fun (e : Nat × Array Bind × String) => if e.1 == k then some e.2.2 else none
+        | none => #[]
+      let what :=
+        if (r1.splitOn "assertion").length > 1 then "an assertion fails"
+        else if failed.isEmpty then "an expectation does not hold"
+        else "this expectation does not hold:\n      " ++ "\n      ".intercalate
+          (failed.toList.map fun p => s!".expect({p})")
+      return .failed s!"on some execution, {what}" execution
     let states := match r1.splitOn "explored " with
       | _ :: rest :: _ => (rest.takeWhile Char.isDigit).toString.toNat!
       | _ => 0
@@ -519,15 +539,29 @@ def isTestName (pat? : Option String) (n : String) : Bool :=
       | .passed n =>
         passing := passing + 1
         lines := lines.push s!"    ok {name} passed (every execution, {n} states)"
-      | .failed why =>
+      | .failed why execution =>
         failing := failing + 1
         lines := lines.push s!"    ✗ {name} failed: {why}"
+        let indented := "\n".intercalate ((execution.splitOn "\n").map fun l =>
+          if l.isEmpty then l else "      " ++ l)
+        unless execution.isEmpty do lines := lines.push ("\n" ++ indented)
+        -- also at the run itself, when it is in this file
+        let here ← match d.ref.getHeadInfo with
+          | .original lead _ _ _ => pure (lead.str == (← getFileMap).source)
+          | _ => pure false
+        if here then
+          let msg := s!"[test] {name} failed: {why}" ++ (if execution.isEmpty then "" else "\n\n" ++ execution)
+          if veil.violationIsError.get (← getOptions) then logErrorAt d.ref msg else logInfoAt d.ref msg
       | .notChecked why =>
         skipped := skipped + 1
         lines := lines.push s!"    - {name} not checked: {why}"
   let ms := (← IO.monoMsNow) - t0
   lines := lines.push ""
   lines := lines.push s!"  {passing} passing, {failing} failing, {skipped} not checked ({ms}ms)"
-  logInfoAt stx ("\n".intercalate lines.toList)
+  let report := "\n".intercalate lines.toList
+  -- as `quint test`, which fails when a test fails
+  if failing > 0 && veil.violationIsError.get (← getOptions) then logErrorAt stx report
+  else if skipped > 0 then logWarningAt stx report
+  else logInfoAt stx report
 
 end Veil.Quint

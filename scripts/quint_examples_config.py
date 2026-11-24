@@ -2,6 +2,8 @@
 
 For each Quint file (path relative to `examples/` in the Quint repository):
 
+- `tests_expect_failure`: modules whose `#quint_test` has a run that is expected to fail in Veil
+  (reported as information, not an error).
 - `tails`: Veil commands to insert after a module (by its Quint name). A module with state is
   still open there, so these are Veil commands about it; they end with `end <module>`.
 - `notes`: text for the header of the Lean file (what is checked, how it relates to Quint's own
@@ -241,7 +243,12 @@ reported as information.""",
 (`properValues`: at most `MAX_FAULTS` crashes) `agreement` holds; with `badValues` (more crashes
 than tolerated) it is violated, which Quint's comments document. The initial states alone number
 7^5 (every process proposes one of seven values), so, as with `quint run`, the instances are
-checked by random simulation.""",
+checked by random simulation.
+
+`#quint_test properValues` reports `consensusRunTest` as failing, which is expected: the run picks
+its values with `nondet`, and Veil checks every choice where `quint test` samples one, so it also
+finds the choices for which the run's expectations do not hold.""",
+        'tests_expect_failure': ['properValues'],
         'tails': {
             'properValues': sim('properValues', ['agreement', 'validity']),
             'badValues': sim('badValues', ['agreement'], violation=True),
