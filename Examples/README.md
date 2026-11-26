@@ -63,6 +63,12 @@ Temporal properties model checked with `#temporal_check`, including
 translations of TLA+ specifications (`TLAPlus/`) and benchmarks from the CAVA
 model checker (`CAVA_BoolProgs/`).
 
+### [Assignment/](Assignment/)
+
+A self-contained modelling assignment for newcomers to Veil: a skeleton for the
+Alternating Bit Protocol, a short tutorial, and a small worked example
+(`JobQueue.lean`); see its [README](Assignment/README.md).
+
 ## Building
 
 ```bash
