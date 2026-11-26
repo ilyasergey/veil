@@ -79,56 +79,56 @@ safety [agreement]
   ∀ n₁ n₂ v₁ v₂, decision n₁ v₁ ∧ decision n₂ v₂ → v₁ = v₂
 
 safety [strong_validity]
-  ∀ n v, decision n v → ((∃ m, initialValue m = v))
+  ∀ n v, decision n v → ∃ m, initialValue m = v
 
 /-! ## Inductive invariant -/
 
 invariant [every_seen_is_someones_initial]
   ∀ n v, W n v → (∃ m, initialValue m = v)
 
--- invariant [decision_minimum_seen]
---   ∀ n v, decision n v → (∀ v', W n v' → val_ord.le v v')
+invariant [decision_minimum_seen]
+  ∀ n v, decision n v → (∀ v', W n v' → val_ord.le v v')
 
--- invariant [crash_limit]
---   numCrashed ≤ f
+invariant [crash_limit]
+  numCrashed ≤ f
 
--- invariant [no_crashes_def]
---   numCrashed = 0 ↔ ∀ n, ¬ crashed n
+invariant [no_crashes_def]
+  numCrashed = 0 ↔ ∀ n, ¬ crashed n
 
--- invariant [decision_crashed_after_end]
---   ∀ n v, (decision n v ∧ crashed n) → crashedInRound n ≥ f + 1
+invariant [decision_crashed_after_end]
+  ∀ n v, (decision n v ∧ crashed n) → crashedInRound n ≥ f + 1
 
--- invariant [decision_only_at_end]
---   ∀ n v, decision n v → round ≥ f + 1
+invariant [decision_only_at_end]
+  ∀ n v, decision n v → round ≥ f + 1
 
--- invariant [crashed_in_round_le_round]
---   ∀ n, crashedInRound n ≤ round
+invariant [crashed_in_round_le_round]
+  ∀ n, crashedInRound n ≤ round
 
--- invariant [initial_value_in_W]
---   ∀ n, W n (initialValue n)
+invariant [initial_value_in_W]
+  ∀ n, W n (initialValue n)
 
--- invariant [decided_in_seen]
---   ∀ n v, decision n v → W n v
+invariant [decided_in_seen]
+  ∀ n v, decision n v → W n v
 
--- invariant [crashedInRound_default]
---   ∀ n, alive n → crashedInRound n = 0
+invariant [crashedInRound_default]
+  ∀ n, alive n → crashedInRound n = 0
 
 /-! ## Saturation: crash-free rounds -/
 
--- ghost relation crashedNow (n : node) := crashed n ∧ crashedInRound n = round
--- ghost relation roundParticipant (n : node) := alive n ∨ crashedNow n
--- ghost relation crashFreeRound (r : Nat) :=
---   ∀ n, ¬ crashed n ∨ crashedInRound n ≠ r
--- ghost relation hadCrashFreeRound := ∃ r, r < round ∧ crashFreeRound r
+ghost relation crashedNow (n : node) := crashed n ∧ crashedInRound n = round
+ghost relation roundParticipant (n : node) := alive n ∨ crashedNow n
+ghost relation crashFreeRound (r : Nat) :=
+  ∀ n, ¬ crashed n ∨ crashedInRound n ≠ r
+ghost relation hadCrashFreeRound := ∃ r, r < round ∧ crashFreeRound r
 
--- invariant [crash_round_gap]
---   numCrashed < round → hadCrashFreeRound
+invariant [crash_round_gap]
+  numCrashed < round → hadCrashFreeRound
 
--- invariant [crash_round_gap_or_current]
---   numCrashed = round → hadCrashFreeRound ∨ crashFreeRound round
+invariant [crash_round_gap_or_current]
+  numCrashed = round → hadCrashFreeRound ∨ crashFreeRound round
 
--- invariant [participants_have_equal_W_after_crash_free]
---   hadCrashFreeRound → ∀ n₁ n₂ v, roundParticipant n₁ ∧ roundParticipant n₂ → (W n₁ v = W n₂ v)
+invariant [participants_have_equal_W_after_crash_free]
+  hadCrashFreeRound → ∀ n₁ n₂ v, roundParticipant n₁ ∧ roundParticipant n₂ → (W n₁ v = W n₂ v)
 
 set_option veil.smt.trust false
 
@@ -136,7 +136,7 @@ set_option veil.smt.trust false
 
 /-! ## Explicit-state model checking -/
 
-#model_check { node := Fin 3, value := Fin 2 } { f := 1 }
+-- #model_check { node := Fin 3, value := Fin 4 } { f := 1 }
 
 /-! ## Bounded model checking -/
 
@@ -155,6 +155,6 @@ set_option veil.smt.trust false
 
 /-! ## Checking the Inductive Invariant -/
 
--- #check_invariants
+#check_invariants
 
 end FloodSet
