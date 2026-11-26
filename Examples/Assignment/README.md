@@ -61,19 +61,18 @@ simplest retransmission protocol that is still interesting.
   link*. It keeps resending the same frame until it receives an
   acknowledgement carrying the same bit. Then it flips its bit and moves on
   to the next item.
-- The receiver remembers which bit it expects next. When a frame with the
-  expected bit arrives, it delivers the item to its client and flips the
-  expected bit. When a frame with the other bit arrives, it does not deliver
-  it: the frame is a retransmission of something it already has.
+- The receiver remembers the bit of the last frame it received. A frame
+  with a different bit carries a new item; a frame with the same bit is a
+  retransmission of the item it already has.
 - The receiver sends acknowledgements on the *ack link*, each carrying the
-  bit of the last frame it accepted. It may send them repeatedly.
+  bit of the last frame it received. It may send them repeatedly.
 - Either link may lose frames at any time.
 
 This description leaves a number of things open, and so do the sources
-below. What is in transit on a link, and how much of it? Can a link do
-anything to frames other than lose them? Where do the data items come from,
-and how many are there? What does it mean, precisely, for the transmission
-to be correct? Settling such questions is the main part of the assignment.
+below. How much can be in transit on a link? Can a link do anything to
+frames other than lose them? What does it mean, precisely, for the
+transmission to be correct, and under which assumptions does it make
+progress? Settling such questions is the main part of the assignment.
 
 Sources:
 
@@ -82,20 +81,27 @@ Sources:
   Communications of the ACM 12(5), 1969. The original paper.
 - [Alternating bit protocol](https://en.wikipedia.org/wiki/Alternating_bit_protocol)
   on Wikipedia.
-- A [TLA+ specification](https://github.com/tlaplus/Examples/tree/master/specifications/SpecifyingSystems/TLC)
-  (`AlternatingBit.tla`, with `ABCorrectness.tla`) from Lamport's
-  *Specifying Systems*. You may consult it. If your model
-  differs from it, be ready to say where and why.
+- A TLA+ specification from Lamport's
+  [*Specifying Systems*](https://lamport.azurewebsites.net/tla/book.html),
+  Chapter 14, in the
+  [TLA+ examples repository](https://github.com/tlaplus/Examples/tree/master/specifications/SpecifyingSystems/TLC):
+  [AlternatingBit.tla](https://github.com/tlaplus/Examples/blob/master/specifications/SpecifyingSystems/TLC/AlternatingBit.tla) is the protocol,
+  [ABCorrectness.tla](https://github.com/tlaplus/Examples/blob/master/specifications/SpecifyingSystems/TLC/ABCorrectness.tla) says what it should achieve, and
+  [MCAlternatingBit.tla](https://github.com/tlaplus/Examples/blob/master/specifications/SpecifyingSystems/TLC/MCAlternatingBit.tla) is the model-checking setup. The skeleton follows its variables and actions,
+  and you may consult it. If your model differs from it, be ready to say
+  where and why.
 
 ## 3. The task
 
-Complete [AlternatingBit.lean](AlternatingBit.lean). The skeleton fixes
-nothing except the module name and one type; change anything else.
+Complete [AlternatingBit.lean](AlternatingBit.lean). The skeleton gives the
+state and the outlines of seven actions: three of the sender, two of the
+receiver, and one loss action per link. You may change any of it, as long as
+you can say why.
 
-**Part 1: the model.** Declare the state and the actions of the protocol and
-of its environment (the links, and whoever supplies the data). Every `Nat`,
-`List` or bound in the state is a decision, and so is every `require`. Keep
-the model small enough for exhaustive checking on a small instance.
+**Part 1: the model.** Write the initial state and the bodies of the
+actions. Every `require` is a decision: it says when a step can happen. So
+is every bound. Keep the model small enough for exhaustive checking on a
+small instance.
 
 **Part 2: safety.** State, as `safety` clauses, what the protocol
 guarantees in every reachable state. Choose the properties yourself. Aim for
@@ -107,10 +113,9 @@ reordered or invented item. Check them with `#model_check`.
 every safety property. Show that yours is not vacuous: give witnesses, found
 by Veil, that the interesting behaviours occur. At least:
 
-- several items are delivered, one after another;
-- a link loses a frame, and the transmission still continues;
-- a retransmitted frame reaches the receiver and is not delivered a second
-  time.
+- two items are sent and acknowledged, one after the other;
+- a link loses a frame, and the item is still acknowledged later;
+- a retransmitted frame reaches the receiver.
 
 Add any other witness that you would want to see before trusting the model.
 
@@ -142,7 +147,7 @@ own words. It is the starting point of the discussion.
   here. If you finish early, an inductive invariant for one of your safety
   properties is a good optional extension, and may require a different
   encoding of the state.
-- Large instances. Two data values and a handful of items are enough.
+- Large instances. Two data values and links of capacity 1 or 2 are enough.
 - Covering every variant of the protocol in the literature.
 
 ## 4. Veil in fifteen minutes

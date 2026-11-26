@@ -16,6 +16,12 @@ veil module JobQueue
 
 open Lentil  -- temporal operators
 
+-- Typing the temporal symbols in VS Code (Lean 4 extension): type the
+-- abbreviation, then a space or Tab.
+--   □  \square      ◇  \Diamond     ↝  \leadsto
+--   ⌜  \ulcorner    ⌝  \urcorner    ⟨ ⟩  \<  \>
+--   𝒲ℱ  \McW\McF   𝒮ℱ  \McS\McF
+
 /-! ## Types, constants and state -/
 
 -- An uninterpreted type: verification quantifies over it, model checking
