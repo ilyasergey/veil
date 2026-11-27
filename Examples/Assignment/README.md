@@ -30,9 +30,11 @@ file open and ready to edit during the discussion.
 ## 1. Setup
 
 Follow the [build instructions](../../README.md#build) in the repository
-README: install the system dependencies and Lean (through `elan`), clone the
-repository, and run `lake build`. The first build compiles Veil and its
-dependencies and takes a while, so start it before you read on.
+README: install the system dependencies and Lean (through `elan`). Then
+clone this branch into a private repository of your own, as described in
+[How to submit](#6-how-to-submit), and run `lake build`. The first build
+compiles Veil and its dependencies and takes a while, so start it before you
+read on.
 
 Check a single file from the repository root with
 
@@ -335,6 +337,49 @@ Background:
 - Lean 4: [documentation](https://lean-lang.org/learn/). You need very
   little Lean for this assignment beyond `List` functions such as `++`,
   `head`, `tail`, `take` and `length`.
+
+## 6. How to submit
+
+Start from the `assignment/alternating-bit` branch of
+[ilyasergey/veil](https://github.com/ilyasergey/veil/tree/assignment/alternating-bit).
+Work in a private copy under your own GitHub account and invite `ilyasergey`
+as a collaborator. Submit a pull request within that private repository,
+targeting its `assignment/alternating-bit` branch, and send us the link.
+
+Use a standalone private repository. GitHub keeps
+[forks of public repositories public](https://docs.github.com/en/pull-requests/reference/forks#visibility-of-forks),
+which would expose your solution to others. Do not use the Fork button or
+`gh repo fork`.
+
+The commands below assume that the GitHub CLI (`gh`) is installed and
+authenticated, and that Git access over SSH is configured. Replace
+`YOUR_LOGIN` with your GitHub login and `YOUR_BRANCH` with a working branch
+name of your choice. Renaming the original remote to `upstream` leaves
+`origin` available for your private copy:
+
+```console
+git clone --branch assignment/alternating-bit git@github.com:ilyasergey/veil.git
+cd veil
+git remote rename origin upstream
+gh repo create YOUR_LOGIN/veil-assignment \
+  --private --source=. --remote=origin --push
+gh api -X PUT repos/YOUR_LOGIN/veil-assignment/collaborators/ilyasergey
+lake build
+git checkout -b YOUR_BRANCH
+```
+
+The pull request should contain the completed
+[AlternatingBit.lean](AlternatingBit.lean) and [NOTES.md](NOTES.md), as
+described under [What to submit](#what-to-submit). In `NOTES.md`, say roughly
+how long you spent, what is unfinished, and which AI tools you used and for
+what. If you reached the time cap, submit what you have. Once your work is
+committed:
+
+```console
+git push -u origin YOUR_BRANCH
+gh pr create --repo YOUR_LOGIN/veil-assignment \
+  --base assignment/alternating-bit --head YOUR_BRANCH --fill
+```
 
 Questions about the task or the tools are welcome before and during the
 assignment. Asking a good question is not held against you either.
